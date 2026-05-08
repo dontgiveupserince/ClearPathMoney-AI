@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Sparkles, Shield, AlertCircle, CheckCircle2, Lightbulb, Send, RefreshCw, TrendingDown, Key } from 'lucide-react';
+import { Sparkles, Shield, AlertCircle, CheckCircle2, Lightbulb, Send, RefreshCw, TrendingDown } from 'lucide-react';
 import { Category, Transaction, Debt, AppSettings, AIInsight } from '../../types/finance';
 import { getCategorySpending, getTotalExpenses } from '../../lib/calculations';
 import { saveSettings } from '../../lib/storage';
@@ -72,8 +72,6 @@ export default function AICoach({ categories, transactions, debts, settings, ins
   const [answering, setAnswering] = useState(false);
   const [error, setError] = useState('');
 
-  const hasKey = true;
-
   function acknowledgePrivacy() {
     const updated = { ...settings, aiPrivacyAcknowledged: true };
     onSettingsChange(updated);
@@ -81,7 +79,6 @@ export default function AICoach({ categories, transactions, debts, settings, ins
   }
 
   async function handleGenerate() {
-    if (!hasKey) return;
     setGenerating(true);
     setError('');
     const context = buildContext(categories, transactions, debts, settings, monthlyNetIncome, monthlyGrossIncome);
@@ -101,7 +98,7 @@ export default function AICoach({ categories, transactions, debts, settings, ins
 
   async function handleAsk(e: React.FormEvent) {
     e.preventDefault();
-    if (!question.trim() || !hasKey) return;
+    if (!question.trim()) return;
     setAnswering(true);
     setError('');
     const context = buildContext(categories, transactions, debts, settings, monthlyNetIncome, monthlyGrossIncome);
@@ -126,7 +123,6 @@ export default function AICoach({ categories, transactions, debts, settings, ins
           <h2 className="font-heading font-bold text-xl text-gray-900 mb-3">Privacy & Disclaimer</h2>
           <div className="text-sm text-gray-600 space-y-3 text-left mb-6">
             <p>Your financial data is sent to OpenAI via a secure server function to generate personalized insights. No data is stored by us.</p>
-            <p>You'll need to add your own OpenAI API key in Settings to enable real AI responses.</p>
             <div className="flex gap-2 p-3 bg-amber-50 rounded-xl border border-amber-200">
               <AlertCircle size={16} className="text-amber-600 shrink-0 mt-0.5" />
               <p className="text-amber-800">This app provides educational budgeting guidance, not professional financial advice. Always consult a qualified advisor for major financial decisions.</p>
@@ -152,26 +148,13 @@ export default function AICoach({ categories, transactions, debts, settings, ins
         </div>
         <button
           onClick={handleGenerate}
-          disabled={generating || !hasKey}
+          disabled={generating}
           className="flex items-center gap-2 px-4 py-2.5 bg-teal-600 text-white text-sm font-medium rounded-xl hover:bg-teal-700 transition-colors disabled:opacity-50"
         >
           {generating ? <RefreshCw size={16} className="animate-spin" /> : <Sparkles size={16} />}
           {generating ? 'Analyzing...' : insight ? 'Regenerate Plan' : 'Generate Weekly Plan'}
         </button>
       </div>
-
-      {/* No API key banner */}
-      {!hasKey && (
-        <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-2xl">
-          <Key size={18} className="text-amber-600 shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm font-medium text-amber-900">OpenAI API key required</p>
-            <p className="text-sm text-amber-700 mt-0.5">
-              Go to <strong>Settings</strong> and add your OpenAI API key to enable AI-powered insights and Q&A.
-            </p>
-          </div>
-        </div>
-      )}
 
       {/* Error */}
       {error && (
@@ -181,7 +164,7 @@ export default function AICoach({ categories, transactions, debts, settings, ins
         </div>
       )}
 
-      {!insight && !generating && hasKey && (
+      {!insight && !generating && (
         <div className="bg-gradient-to-br from-teal-50 to-teal-100 border border-teal-200 rounded-2xl p-8 text-center">
           <div className="w-16 h-16 rounded-2xl bg-teal-200 flex items-center justify-center mx-auto mb-4">
             <TrendingDown size={28} className="text-teal-700" />
@@ -287,13 +270,13 @@ export default function AICoach({ categories, transactions, debts, settings, ins
           <input
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
-            placeholder={hasKey ? 'e.g. How much did I spend on dining?' : 'Add your API key in Settings to ask questions'}
-            disabled={!hasKey || answering}
+            placeholder="e.g. How much did I spend on dining?"
+            disabled={answering}
             className="flex-1 px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-400"
           />
           <button
             type="submit"
-            disabled={answering || !question.trim() || !hasKey}
+            disabled={answering || !question.trim()}
             className="px-4 py-2.5 bg-teal-600 text-white rounded-xl hover:bg-teal-700 transition-colors disabled:opacity-50"
           >
             {answering ? <RefreshCw size={16} className="animate-spin" /> : <Send size={16} />}
@@ -305,7 +288,7 @@ export default function AICoach({ categories, transactions, debts, settings, ins
           </div>
         )}
         <p className="text-xs text-gray-400 mt-3">
-          Powered by GPT-4o mini via your OpenAI key. Educational guidance only — not professional financial advice.
+          Powered by GPT-4o mini. Educational guidance only — not professional financial advice.
         </p>
       </div>
     </div>
