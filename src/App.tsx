@@ -1,8 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase, supabaseConfigured } from './lib/supabase';
-import {
-  getLocalSession, signInLocal, signUpLocal, resetPasswordLocal, clearLocalSession,
-} from './lib/localAuth';
+import { supabase } from './lib/supabase';
 import AuthPage, { AuthHandlers } from './components/auth/AuthPage';
 import CompleteProfileModal from './components/auth/CompleteProfileModal';
 import AppShell, { Page } from './components/AppShell';
@@ -25,7 +22,7 @@ import { Category, Transaction, Debt, AppSettings, AIInsight } from './types/fin
 
 interface AppSession {
   email?: string;
-  userId?: string;
+  userId: string;
 }
 
 interface UserProfile {
@@ -63,28 +60,19 @@ export default function App() {
   const [aiInsight, setAIInsight] = useState<AIInsight | null>(null);
 
   useEffect(() => {
-    if (supabaseConfigured) {
-      supabase.auth.getSession().then(({ data: { session: s } }) => {
-        setSession(s ? { email: s.user.email, userId: s.user.id } : null);
-      });
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
-        setSession(s ? { email: s.user.email, userId: s.user.id } : null);
-      });
-      return () => subscription.unsubscribe();
-    } else {
-      const local = getLocalSession();
-      setSession(local ? { email: local.user.email } : null);
-    }
+    supabase.auth.getSession().then(({ data: { session: s } }) => {
+      setSession(s ? { email: s.user.email, userId: s.user.id } : null);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
+      setSession(s ? { email: s.user.email, userId: s.user.id } : null);
+    });
+    return () => subscription.unsubscribe();
   }, []);
 
   // Load profile when session is established
   useEffect(() => {
+    if (session === undefined) return;
     if (!session) {
-      setProfileLoading(false);
-      return;
-    }
-    if (!session.userId) {
-      // Local auth — no profile DB, skip
       setProfileLoading(false);
       return;
     }
@@ -98,7 +86,7 @@ export default function App() {
         setNeedsProfile(true);
       }
     });
-  }, [session?.userId, session]);
+  }, [session?.userId]);
 
   // Load local data when session is ready
   useEffect(() => {
@@ -109,7 +97,7 @@ export default function App() {
     setDebts(getDebts());
     setSettings(getSettings());
     setAIInsight(getAIInsight());
-  }, [session]);
+  }, [session?.userId]);
 
   async function handleCompleteProfile(firstName: string, lastName: string): Promise<{ error: string | null }> {
     if (!session?.userId) return { error: 'Not logged in.' };
@@ -122,48 +110,29 @@ export default function App() {
   }
 
   function handleSignOut() {
-    if (supabaseConfigured) {
-      supabase.auth.signOut();
-    } else {
-      clearLocalSession();
-      setSession(null);
-    }
+    supabase.auth.signOut();
   }
 
-  const authHandlers: AuthHandlers = supabaseConfigured
-    ? {
-        signIn: async (email, password) => {
-          const { error } = await supabase.auth.signInWithPassword({ email, password });
-          return { error: error?.message ?? null };
-        },
-        signUp: async (email, password, firstName, lastName) => {
-          const { data, error } = await supabase.auth.signUp({ email, password });
-          if (error) return { error: error.message };
-          if (data.user) {
-            await upsertProfile(data.user.id, firstName, lastName);
-          }
-          return { error: null };
-        },
-        resetPassword: async (email) => {
-          const { error } = await supabase.auth.resetPasswordForEmail(email);
-          return { error: error?.message ?? null };
-        },
+  const authHandlers: AuthHandlers = {
+    signIn: async (email, password) => {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      return { error: error?.message ?? null };
+    },
+    signUp: async (email, password, firstName, lastName) => {
+      const { data, error } = await supabase.auth.signUp({ email, password });
+      if (error) return { error: error.message };
+      if (data.user) {
+        await upsertProfile(data.user.id, firstName, lastName);
       }
-    : {
-        signIn: async (email, password) => {
-          const { session: s, error } = await signInLocal(email, password);
-          if (s) setSession({ email: s.user.email });
-          return { error };
-        },
-        signUp: async (email, password) => {
-          const { session: s, error } = await signUpLocal(email, password);
-          if (s) setSession({ email: s.user.email });
-          return { error };
-        },
-        resetPassword: resetPasswordLocal,
-      };
+      return { error: null };
+    },
+    resetPassword: async (email) => {
+      const { error } = await supabase.auth.resetPasswordForEmail(email);
+      return { error: error?.message ?? null };
+    },
+  };
 
-  if (session === undefined || (session && supabaseConfigured && profileLoading)) {
+  if (session === undefined || (session && profileLoading)) {
     return (
       <div className="min-h-screen bg-[#F7F6F2] flex items-center justify-center">
         <div className="w-8 h-8 border-2 border-teal-200 border-t-teal-600 rounded-full animate-spin" />
@@ -211,7 +180,7 @@ export default function App() {
 
   return (
     <>
-      {needsProfile && supabaseConfigured && (
+      {needsProfile && (
         <CompleteProfileModal onComplete={handleCompleteProfile} />
       )}
       <AppShell page={page} onNav={setPage} userEmail={session.email} onSignOut={handleSignOut}>
