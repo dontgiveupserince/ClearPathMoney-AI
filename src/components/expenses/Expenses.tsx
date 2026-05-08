@@ -1,20 +1,23 @@
 import { useState } from 'react';
-import { Plus, CreditCard as Edit2, Trash2, Receipt, Search, Filter } from 'lucide-react';
+import { Plus, CreditCard as Edit2, Trash2, Receipt, Search, Filter, Upload } from 'lucide-react';
 import { Transaction, Category } from '../../types/finance';
 import { formatCurrency, formatDate } from '../../lib/calculations';
 import Modal from '../shared/Modal';
 import EmptyState from '../shared/EmptyState';
 import ExpenseForm from './ExpenseForm';
+import CsvImport from './CsvImport';
 
 interface Props {
   transactions: Transaction[];
   categories: Category[];
   onSave: (data: Omit<Transaction, 'id'>, id?: string) => Promise<{ error: string | null }>;
   onDelete: (id: string) => Promise<{ error: string | null }>;
+  onBulkImport: (rows: Omit<Transaction, 'id'>[]) => Promise<{ imported: Transaction[]; error: string | null }>;
 }
 
-export default function Expenses({ transactions, categories, onSave, onDelete }: Props) {
+export default function Expenses({ transactions, categories, onSave, onDelete, onBulkImport }: Props) {
   const [showForm, setShowForm] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [search, setSearch] = useState('');
   const [filterCat, setFilterCat] = useState('');
@@ -56,18 +59,27 @@ export default function Expenses({ transactions, categories, onSave, onDelete }:
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="font-heading font-bold text-2xl text-gray-900">Expenses</h1>
           <p className="text-gray-500 text-sm mt-1">Track every dollar that goes out.</p>
         </div>
-        <button
-          onClick={openAdd}
-          className="flex items-center gap-2 px-4 py-2.5 bg-teal-600 text-white text-sm font-medium rounded-xl hover:bg-teal-700 transition-colors"
-        >
-          <Plus size={16} />
-          Add Expense
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowImport(true)}
+            className="flex items-center gap-2 px-4 py-2.5 border border-gray-200 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-50 transition-colors"
+          >
+            <Upload size={16} />
+            Import CSV
+          </button>
+          <button
+            onClick={openAdd}
+            className="flex items-center gap-2 px-4 py-2.5 bg-teal-600 text-white text-sm font-medium rounded-xl hover:bg-teal-700 transition-colors"
+          >
+            <Plus size={16} />
+            Add Expense
+          </button>
+        </div>
       </div>
 
       <div className="flex gap-3 flex-wrap">
@@ -165,6 +177,15 @@ export default function Expenses({ transactions, categories, onSave, onDelete }:
             serverError={serverError}
           />
         </Modal>
+      )}
+
+      {showImport && (
+        <CsvImport
+          categories={categories}
+          existing={transactions}
+          onClose={() => setShowImport(false)}
+          onImport={onBulkImport}
+        />
       )}
     </div>
   );

@@ -93,6 +93,21 @@ export async function deleteTransaction(
   return { error: error?.message ?? null };
 }
 
+export async function bulkCreateTransactions(
+  userId: string,
+  rows: Omit<Transaction, 'id'>[]
+): Promise<{ transactions: Transaction[]; error: string | null }> {
+  if (!supabaseConfigured) return { transactions: [], error: 'Supabase not configured.' };
+  if (rows.length === 0) return { transactions: [], error: null };
+  const payload = rows.map((t) => transactionToRow(userId, t));
+  const { data, error } = await supabase
+    .from('transactions')
+    .insert(payload)
+    .select();
+  if (error || !data) return { transactions: [], error: error?.message ?? 'Failed to import transactions.' };
+  return { transactions: (data as TransactionRow[]).map(rowToTransaction), error: null };
+}
+
 export async function deleteAllTransactions(userId: string): Promise<{ error: string | null }> {
   if (!supabaseConfigured) return { error: 'Supabase not configured.' };
   const { error } = await supabase

@@ -25,7 +25,7 @@ import {
   fetchDebts, createDebt, updateDebt, deleteDebt, deleteAllDebts,
 } from './lib/debts';
 import {
-  fetchTransactions, createTransaction, updateTransaction, deleteTransaction, deleteAllTransactions,
+  fetchTransactions, createTransaction, updateTransaction, deleteTransaction, deleteAllTransactions, bulkCreateTransactions,
 } from './lib/transactions';
 import {
   fetchUserSettings, upsertUserSettings, deleteUserSettings, DEFAULT_SETTINGS,
@@ -265,6 +265,15 @@ export default function App() {
     return { error };
   }
 
+  async function handleTransactionBulkImport(rows: Omit<Transaction, 'id'>[]): Promise<{ imported: Transaction[]; error: string | null }> {
+    if (!session?.userId) return { imported: [], error: 'Sign in to import.' };
+    const { transactions: imported, error } = await bulkCreateTransactions(session.userId, rows);
+    if (!error && imported.length > 0) {
+      setTransactions((prev) => [...imported, ...prev].sort((a, b) => b.date.localeCompare(a.date)));
+    }
+    return { imported, error };
+  }
+
   async function handleDebtSave(data: Omit<Debt, 'id'>, id?: string): Promise<{ error: string | null }> {
     if (!session?.userId) return { error: 'Sign in to save debts.' };
     if (id) {
@@ -391,6 +400,7 @@ export default function App() {
             categories={categories}
             onSave={handleTransactionSave}
             onDelete={handleTransactionDelete}
+            onBulkImport={handleTransactionBulkImport}
           />
         )}
         {page === 'debts' && (
