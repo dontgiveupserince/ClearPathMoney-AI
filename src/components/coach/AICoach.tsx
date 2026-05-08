@@ -37,7 +37,7 @@ function buildContext(categories: Category[], transactions: Transaction[], debts
   };
 }
 
-async function callEdge(body: object, apiKey: string): Promise<{ data?: unknown; error?: string }> {
+async function callEdge(body: object): Promise<{ data?: unknown; error?: string }> {
   try {
     const res = await fetch(EDGE_URL, {
       method: 'POST',
@@ -45,7 +45,7 @@ async function callEdge(body: object, apiKey: string): Promise<{ data?: unknown;
         'Content-Type': 'application/json',
         Authorization: `Bearer ${ANON_KEY}`,
       },
-      body: JSON.stringify({ ...body, apiKey }),
+      body: JSON.stringify(body),
     });
     const json = await res.json();
     if (!res.ok || json.error) return { error: json.error ?? 'Request failed' };
@@ -62,7 +62,7 @@ export default function AICoach({ categories, transactions, debts, settings, ins
   const [answering, setAnswering] = useState(false);
   const [error, setError] = useState('');
 
-  const hasKey = Boolean(settings.openAiApiKey?.trim());
+  const hasKey = true;
 
   function acknowledgePrivacy() {
     const updated = { ...settings, aiPrivacyAcknowledged: true };
@@ -75,7 +75,7 @@ export default function AICoach({ categories, transactions, debts, settings, ins
     setGenerating(true);
     setError('');
     const context = buildContext(categories, transactions, debts, settings);
-    const { data, error: err } = await callEdge({ action: 'generate_plan', context }, settings.openAiApiKey!);
+    const { data, error: err } = await callEdge({ action: 'generate_plan', context });
     setGenerating(false);
     if (err) { setError(err); return; }
     const d = data as { summary: string; alerts: string[]; actions: string[]; debtAdvice: string; savingsOpportunities: string[] };
@@ -95,7 +95,7 @@ export default function AICoach({ categories, transactions, debts, settings, ins
     setAnswering(true);
     setError('');
     const context = buildContext(categories, transactions, debts, settings);
-    const { data, error: err } = await callEdge({ action: 'ask_question', context, question }, settings.openAiApiKey!);
+    const { data, error: err } = await callEdge({ action: 'ask_question', context, question });
     setAnswering(false);
     if (err) { setError(err); return; }
     setAnswer((data as { answer: string }).answer ?? '');

@@ -32,9 +32,9 @@ Deno.serve(async (req: Request) => {
     const body: RequestBody = await req.json();
     const { action, context, question, apiKey } = body;
 
-    const resolvedKey = apiKey || Deno.env.get("OPENAI_API_KEY");
+    const resolvedKey = Deno.env.get("OPENAI_API_KEY") || apiKey;
     if (!resolvedKey) {
-      return new Response(JSON.stringify({ error: "No OpenAI API key provided." }), {
+      return new Response(JSON.stringify({ error: "No OpenAI API key configured." }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
