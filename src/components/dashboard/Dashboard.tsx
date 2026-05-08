@@ -18,9 +18,10 @@ interface SummaryCardProps {
   color: string;
   sub?: string;
   subPositive?: boolean;
+  subMuted?: boolean;
 }
 
-function SummaryCard({ label, value, icon: Icon, color, sub, subPositive }: SummaryCardProps) {
+function SummaryCard({ label, value, icon: Icon, color, sub, subPositive, subMuted }: SummaryCardProps) {
   return (
     <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
       <div className="flex items-start justify-between mb-3">
@@ -31,8 +32,8 @@ function SummaryCard({ label, value, icon: Icon, color, sub, subPositive }: Summ
       <p className="text-2xl font-heading font-bold text-gray-900">{value}</p>
       <p className="text-sm text-gray-500 mt-0.5">{label}</p>
       {sub && (
-        <p className={`text-xs mt-2 flex items-center gap-1 font-medium ${subPositive ? 'text-green-600' : 'text-amber-600'}`}>
-          {subPositive ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
+        <p className={`text-xs mt-2 font-medium ${subMuted ? 'text-gray-400' : subPositive ? 'text-green-600 flex items-center gap-1' : 'text-amber-600 flex items-center gap-1'}`}>
+          {!subMuted && (subPositive ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />)}
           {sub}
         </p>
       )}
@@ -74,11 +75,14 @@ interface Props {
   aiInsight: AIInsight | null;
   onGoToCoach: () => void;
   firstName?: string;
+  monthlyNetIncome: number;
+  monthlyGrossIncome: number;
 }
 
-export default function Dashboard({ categories, transactions, debts, settings, aiInsight, onGoToCoach, firstName }: Props) {
+export default function Dashboard({ categories, transactions, debts, settings, aiInsight, onGoToCoach, firstName, monthlyNetIncome, monthlyGrossIncome }: Props) {
   const totalExpenses = getTotalExpenses(transactions);
-  const remaining = settings.monthlyIncome - totalExpenses;
+  const hasIncome = monthlyNetIncome > 0;
+  const remaining = monthlyNetIncome - totalExpenses;
   const totalDebt = debts.reduce((s, d) => s + d.balance, 0);
   const categorySpending = getCategorySpending(transactions, categories);
   const plan = calculatePayoff(debts, settings.payoffMethod, settings.extraDebtPayment);
@@ -116,10 +120,12 @@ export default function Dashboard({ categories, transactions, debts, settings, a
       {/* Summary Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <SummaryCard
-          label="Monthly Income"
-          value={settings.monthlyIncome > 0 ? formatCurrency(settings.monthlyIncome) : '—'}
+          label="Monthly Net Income"
+          value={hasIncome ? formatCurrency(monthlyNetIncome) : '—'}
           icon={Wallet}
           color="bg-teal-600"
+          sub={monthlyGrossIncome > 0 ? `Gross ${formatCurrency(monthlyGrossIncome)}` : undefined}
+          subMuted
         />
         <SummaryCard
           label="Total Expenses"
@@ -129,7 +135,7 @@ export default function Dashboard({ categories, transactions, debts, settings, a
         />
         <SummaryCard
           label="Remaining Budget"
-          value={settings.monthlyIncome > 0 ? formatCurrency(Math.abs(remaining)) : '—'}
+          value={hasIncome ? formatCurrency(Math.abs(remaining)) : '—'}
           icon={PiggyBank}
           color={remaining < 0 ? 'bg-red-500' : 'bg-green-600'}
           sub={remaining < 0 ? 'Over budget' : undefined}

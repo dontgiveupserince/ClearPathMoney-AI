@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import {
-  LayoutDashboard, Tag, Receipt, CreditCard, TrendingDown, Sparkles, Settings, Menu, X, ChevronRight, LogOut,
+  LayoutDashboard, Tag, Receipt, Wallet, CreditCard, TrendingDown, Sparkles, Settings, Menu, X, ChevronRight, LogOut,
 } from 'lucide-react';
 
-export type Page = 'dashboard' | 'budget' | 'expenses' | 'debts' | 'planner' | 'coach' | 'settings';
+export type Page = 'dashboard' | 'budget' | 'income' | 'expenses' | 'debts' | 'planner' | 'coach' | 'settings';
 
 interface NavItem {
   id: Page;
@@ -14,6 +14,7 @@ interface NavItem {
 const NAV: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'budget', label: 'Budget', icon: Tag },
+  { id: 'income', label: 'Income', icon: Wallet },
   { id: 'expenses', label: 'Expenses', icon: Receipt },
   { id: 'debts', label: 'Debts', icon: CreditCard },
   { id: 'planner', label: 'Payoff Planner', icon: TrendingDown },
