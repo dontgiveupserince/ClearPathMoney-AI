@@ -32,6 +32,7 @@ export interface AppSettings {
   payoffMethod: 'snowball' | 'avalanche';
   extraDebtPayment: number;
   aiPrivacyAcknowledged: boolean;
+  openAiApiKey?: string;
 }
 
 export interface PayoffMonth {

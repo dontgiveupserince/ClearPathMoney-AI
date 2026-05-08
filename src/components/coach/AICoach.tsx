@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Sparkles, Shield, AlertCircle, CheckCircle2, Lightbulb, Send, RefreshCw, TrendingDown } from 'lucide-react';
+import { Sparkles, Shield, AlertCircle, CheckCircle2, Lightbulb, Send, RefreshCw, TrendingDown, Key } from 'lucide-react';
 import { Category, Transaction, Debt, AppSettings, AIInsight } from '../../types/finance';
-import { generateMockInsight, mockBudgetAnswer } from '../../lib/ai';
+import { getCategorySpending, getTotalExpenses } from '../../lib/calculations';
 import { saveSettings } from '../../lib/storage';
 
 interface Props {
@@ -14,11 +14,55 @@ interface Props {
   onSettingsChange: (s: AppSettings) => void;
 }
 
+const EDGE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-coach`;
+const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+function buildContext(categories: Category[], transactions: Transaction[], debts: Debt[], settings: AppSettings) {
+  const categorySpending = getCategorySpending(transactions, categories);
+  const totalExpenses = getTotalExpenses(transactions);
+  const totalDebt = debts.reduce((s, d) => s + d.balance, 0);
+  return {
+    monthlyIncome: settings.monthlyIncome,
+    totalExpenses,
+    totalDebt,
+    categories: categorySpending.map((c) => ({
+      name: c.category.name,
+      spent: c.spent,
+      limit: c.category.monthlyLimit,
+      percentage: c.percentage,
+    })),
+    debts: debts.map((d) => ({ name: d.name, balance: d.balance, apr: d.apr, type: d.type })),
+    payoffMethod: settings.payoffMethod,
+    extraDebtPayment: settings.extraDebtPayment,
+  };
+}
+
+async function callEdge(body: object, apiKey: string): Promise<{ data?: unknown; error?: string }> {
+  try {
+    const res = await fetch(EDGE_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${ANON_KEY}`,
+      },
+      body: JSON.stringify({ ...body, apiKey }),
+    });
+    const json = await res.json();
+    if (!res.ok || json.error) return { error: json.error ?? 'Request failed' };
+    return { data: json };
+  } catch (err) {
+    return { error: String(err) };
+  }
+}
+
 export default function AICoach({ categories, transactions, debts, settings, insight, onInsightGenerated, onSettingsChange }: Props) {
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState('');
   const [generating, setGenerating] = useState(false);
   const [answering, setAnswering] = useState(false);
+  const [error, setError] = useState('');
+
+  const hasKey = Boolean(settings.openAiApiKey?.trim());
 
   function acknowledgePrivacy() {
     const updated = { ...settings, aiPrivacyAcknowledged: true };
@@ -27,21 +71,35 @@ export default function AICoach({ categories, transactions, debts, settings, ins
   }
 
   async function handleGenerate() {
+    if (!hasKey) return;
     setGenerating(true);
-    await new Promise((r) => setTimeout(r, 1200));
-    const result = generateMockInsight(categories, transactions, debts, settings);
-    onInsightGenerated(result);
+    setError('');
+    const context = buildContext(categories, transactions, debts, settings);
+    const { data, error: err } = await callEdge({ action: 'generate_plan', context }, settings.openAiApiKey!);
     setGenerating(false);
+    if (err) { setError(err); return; }
+    const d = data as { summary: string; alerts: string[]; actions: string[]; debtAdvice: string; savingsOpportunities: string[] };
+    onInsightGenerated({
+      generatedAt: new Date().toISOString(),
+      summary: d.summary ?? '',
+      alerts: d.alerts ?? [],
+      actions: d.actions ?? [],
+      debtAdvice: d.debtAdvice ?? '',
+      savingsOpportunities: d.savingsOpportunities ?? [],
+    });
   }
 
   async function handleAsk(e: React.FormEvent) {
     e.preventDefault();
-    if (!question.trim()) return;
+    if (!question.trim() || !hasKey) return;
     setAnswering(true);
-    await new Promise((r) => setTimeout(r, 700));
-    const resp = mockBudgetAnswer(question, categories, transactions, debts, settings);
-    setAnswer(resp);
+    setError('');
+    const context = buildContext(categories, transactions, debts, settings);
+    const { data, error: err } = await callEdge({ action: 'ask_question', context, question }, settings.openAiApiKey!);
     setAnswering(false);
+    if (err) { setError(err); return; }
+    setAnswer((data as { answer: string }).answer ?? '');
+    setQuestion('');
   }
 
   if (!settings.aiPrivacyAcknowledged) {
@@ -52,13 +110,13 @@ export default function AICoach({ categories, transactions, debts, settings, ins
           <p className="text-gray-500 text-sm mt-1">Personalized, shame-free financial guidance.</p>
         </div>
         <div className="bg-white rounded-2xl p-8 shadow-sm border border-gray-100 max-w-lg mx-auto text-center">
-          <div className="w-14 h-14 rounded-2xl bg-violet-100 flex items-center justify-center mx-auto mb-4">
-            <Shield size={24} className="text-violet-600" />
+          <div className="w-14 h-14 rounded-2xl bg-teal-50 flex items-center justify-center mx-auto mb-4">
+            <Shield size={24} className="text-teal-600" />
           </div>
           <h2 className="font-heading font-bold text-xl text-gray-900 mb-3">Privacy & Disclaimer</h2>
           <div className="text-sm text-gray-600 space-y-3 text-left mb-6">
-            <p>Your financial data stays on your device. The AI Coach analyzes your local budget data to generate insights — nothing is sent to a server.</p>
-            <p>For the MVP, all insights are generated by a smart local algorithm, not an external AI. Future versions may offer optional cloud AI integration.</p>
+            <p>Your financial data is sent to OpenAI via a secure server function to generate personalized insights. No data is stored by us.</p>
+            <p>You'll need to add your own OpenAI API key in Settings to enable real AI responses.</p>
             <div className="flex gap-2 p-3 bg-amber-50 rounded-xl border border-amber-200">
               <AlertCircle size={16} className="text-amber-600 shrink-0 mt-0.5" />
               <p className="text-amber-800">This app provides educational budgeting guidance, not professional financial advice. Always consult a qualified advisor for major financial decisions.</p>
@@ -66,7 +124,7 @@ export default function AICoach({ categories, transactions, debts, settings, ins
           </div>
           <button
             onClick={acknowledgePrivacy}
-            className="w-full py-3 bg-violet-600 text-white font-medium rounded-xl hover:bg-violet-700 transition-colors"
+            className="w-full py-3 bg-teal-600 text-white font-medium rounded-xl hover:bg-teal-700 transition-colors"
           >
             I understand — let's go
           </button>
@@ -84,32 +142,53 @@ export default function AICoach({ categories, transactions, debts, settings, ins
         </div>
         <button
           onClick={handleGenerate}
-          disabled={generating}
-          className="flex items-center gap-2 px-4 py-2.5 bg-violet-600 text-white text-sm font-medium rounded-xl hover:bg-violet-700 transition-colors disabled:opacity-60"
+          disabled={generating || !hasKey}
+          className="flex items-center gap-2 px-4 py-2.5 bg-teal-600 text-white text-sm font-medium rounded-xl hover:bg-teal-700 transition-colors disabled:opacity-50"
         >
           {generating ? <RefreshCw size={16} className="animate-spin" /> : <Sparkles size={16} />}
           {generating ? 'Analyzing...' : insight ? 'Regenerate Plan' : 'Generate Weekly Plan'}
         </button>
       </div>
 
-      {!insight && !generating && (
-        <div className="bg-gradient-to-br from-violet-50 to-violet-100 border border-violet-200 rounded-2xl p-8 text-center">
-          <div className="w-16 h-16 rounded-2xl bg-violet-200 flex items-center justify-center mx-auto mb-4">
-            <TrendingDown size={28} className="text-violet-700" />
+      {/* No API key banner */}
+      {!hasKey && (
+        <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-2xl">
+          <Key size={18} className="text-amber-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-medium text-amber-900">OpenAI API key required</p>
+            <p className="text-sm text-amber-700 mt-0.5">
+              Go to <strong>Settings</strong> and add your OpenAI API key to enable AI-powered insights and Q&A.
+            </p>
           </div>
-          <h2 className="font-heading font-bold text-xl text-violet-900 mb-2">Ready to coach you</h2>
-          <p className="text-violet-700 text-sm max-w-sm mx-auto">
-            Click "Generate Weekly Plan" to get a personalized budget analysis, debt advice, and actionable next steps.
+        </div>
+      )}
+
+      {/* Error */}
+      {error && (
+        <div className="flex items-start gap-2.5 p-4 bg-red-50 border border-red-200 rounded-2xl">
+          <AlertCircle size={16} className="text-red-500 shrink-0 mt-0.5" />
+          <p className="text-sm text-red-700">{error}</p>
+        </div>
+      )}
+
+      {!insight && !generating && hasKey && (
+        <div className="bg-gradient-to-br from-teal-50 to-teal-100 border border-teal-200 rounded-2xl p-8 text-center">
+          <div className="w-16 h-16 rounded-2xl bg-teal-200 flex items-center justify-center mx-auto mb-4">
+            <TrendingDown size={28} className="text-teal-700" />
+          </div>
+          <h2 className="font-heading font-bold text-xl text-teal-900 mb-2">Ready to coach you</h2>
+          <p className="text-teal-700 text-sm max-w-sm mx-auto">
+            Click "Generate Weekly Plan" to get a personalized budget analysis, debt advice, and actionable next steps powered by GPT-4o mini.
           </p>
         </div>
       )}
 
       {generating && (
         <div className="bg-white rounded-2xl p-8 shadow-sm border border-gray-100 text-center">
-          <div className="w-12 h-12 rounded-2xl bg-violet-100 flex items-center justify-center mx-auto mb-4">
-            <Sparkles size={22} className="text-violet-600 animate-pulse" />
+          <div className="w-12 h-12 rounded-2xl bg-teal-50 flex items-center justify-center mx-auto mb-4">
+            <Sparkles size={22} className="text-teal-600 animate-pulse" />
           </div>
-          <p className="text-gray-700 font-medium">Analyzing your finances...</p>
+          <p className="text-gray-700 font-medium">Analyzing your finances with AI...</p>
           <p className="text-gray-400 text-sm mt-1">Reviewing budget, debts, and spending patterns.</p>
         </div>
       )}
@@ -118,7 +197,7 @@ export default function AICoach({ categories, transactions, debts, settings, ins
         <>
           <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
             <div className="flex items-center gap-2 mb-3">
-              <Sparkles size={16} className="text-violet-600" />
+              <Sparkles size={16} className="text-teal-600" />
               <h2 className="font-heading font-semibold text-gray-900">Weekly Summary</h2>
               <span className="ml-auto text-xs text-gray-400">
                 {new Date(insight.generatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
@@ -189,8 +268,8 @@ export default function AICoach({ categories, transactions, debts, settings, ins
       {/* Ask my budget */}
       <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
         <div className="flex items-center gap-2 mb-4">
-          <div className="w-7 h-7 rounded-lg bg-violet-100 flex items-center justify-center">
-            <Sparkles size={14} className="text-violet-600" />
+          <div className="w-7 h-7 rounded-lg bg-teal-50 flex items-center justify-center">
+            <Sparkles size={14} className="text-teal-600" />
           </div>
           <h2 className="font-heading font-semibold text-gray-900">Ask My Budget</h2>
         </div>
@@ -198,24 +277,25 @@ export default function AICoach({ categories, transactions, debts, settings, ins
           <input
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
-            placeholder="e.g. How much did I spend on dining?"
-            className="flex-1 px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+            placeholder={hasKey ? 'e.g. How much did I spend on dining?' : 'Add your API key in Settings to ask questions'}
+            disabled={!hasKey || answering}
+            className="flex-1 px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-400"
           />
           <button
             type="submit"
-            disabled={answering || !question.trim()}
-            className="px-4 py-2.5 bg-violet-600 text-white rounded-xl hover:bg-violet-700 transition-colors disabled:opacity-60"
+            disabled={answering || !question.trim() || !hasKey}
+            className="px-4 py-2.5 bg-teal-600 text-white rounded-xl hover:bg-teal-700 transition-colors disabled:opacity-50"
           >
             {answering ? <RefreshCw size={16} className="animate-spin" /> : <Send size={16} />}
           </button>
         </form>
         {answer && (
-          <div className="mt-3 p-4 bg-violet-50 rounded-xl border border-violet-100">
-            <p className="text-sm text-violet-900 leading-relaxed">{answer}</p>
+          <div className="mt-3 p-4 bg-teal-50 rounded-xl border border-teal-100">
+            <p className="text-sm text-teal-900 leading-relaxed">{answer}</p>
           </div>
         )}
         <p className="text-xs text-gray-400 mt-3">
-          Responses are generated from your local data. This is educational guidance, not professional advice.
+          Powered by GPT-4o mini via your OpenAI key. Educational guidance only — not professional financial advice.
         </p>
       </div>
     </div>
