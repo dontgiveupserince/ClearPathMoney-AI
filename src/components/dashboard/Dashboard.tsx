@@ -54,6 +54,18 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   );
 };
 
+const MOTIVATIONAL_MESSAGES = [
+  'Small steps today create financial freedom tomorrow.',
+  'Track wisely. Spend intentionally. Grow confidently.',
+  'Every dollar you manage today builds your future.',
+  "You're one step closer to your financial goals.",
+];
+
+function getDailyMessage(): string {
+  const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / 86400000);
+  return MOTIVATIONAL_MESSAGES[dayOfYear % MOTIVATIONAL_MESSAGES.length];
+}
+
 interface Props {
   categories: Category[];
   transactions: Transaction[];
@@ -61,9 +73,10 @@ interface Props {
   settings: AppSettings;
   aiInsight: AIInsight | null;
   onGoToCoach: () => void;
+  firstName?: string;
 }
 
-export default function Dashboard({ categories, transactions, debts, settings, aiInsight, onGoToCoach }: Props) {
+export default function Dashboard({ categories, transactions, debts, settings, aiInsight, onGoToCoach, firstName }: Props) {
   const totalExpenses = getTotalExpenses(transactions);
   const remaining = settings.monthlyIncome - totalExpenses;
   const totalDebt = debts.reduce((s, d) => s + d.balance, 0);
@@ -83,11 +96,21 @@ export default function Dashboard({ categories, transactions, debts, settings, a
         .map((m) => ({ label: m.label, balance: Math.round(m.totalBalance) }))
     : [];
 
+  const motivationalMessage = getDailyMessage();
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-heading font-bold text-2xl text-gray-900">Good to see you.</h1>
-        <p className="text-gray-500 text-sm mt-1">Here's your financial snapshot for this month.</p>
+      {/* Personalized welcome banner */}
+      <div className="relative overflow-hidden bg-gradient-to-r from-teal-600 to-teal-500 rounded-2xl px-6 py-5 shadow-sm">
+        <div className="relative z-10">
+          <p className="font-heading font-bold text-xl text-white leading-snug">
+            {firstName ? `Welcome back, ${firstName} \u{1F44B}` : 'Welcome back \u{1F44B}'}
+          </p>
+          <p className="text-teal-100 text-sm mt-1 leading-relaxed">{motivationalMessage}</p>
+        </div>
+        {/* Decorative circles */}
+        <div className="absolute -top-6 -right-6 w-32 h-32 rounded-full bg-white/10" />
+        <div className="absolute -bottom-8 -right-2 w-24 h-24 rounded-full bg-white/10" />
       </div>
 
       {/* Summary Cards */}
@@ -211,34 +234,34 @@ export default function Dashboard({ categories, transactions, debts, settings, a
       )}
 
       {/* AI Action Plan Preview */}
-      <div className="bg-gradient-to-br from-violet-50 to-violet-100 border border-violet-200 rounded-2xl p-5">
+      <div className="bg-gradient-to-br from-teal-50 to-teal-100 border border-teal-200 rounded-2xl p-5">
         <div className="flex items-center gap-2 mb-3">
-          <div className="w-7 h-7 rounded-lg bg-violet-600 flex items-center justify-center">
+          <div className="w-7 h-7 rounded-lg bg-teal-600 flex items-center justify-center">
             <TrendingDown size={14} className="text-white" />
           </div>
-          <h2 className="font-heading font-semibold text-violet-900">AI Weekly Action Plan</h2>
+          <h2 className="font-heading font-semibold text-teal-900">AI Weekly Action Plan</h2>
         </div>
         {aiInsight ? (
           <div>
-            <p className="text-sm text-violet-800 leading-relaxed mb-3">{aiInsight.summary}</p>
+            <p className="text-sm text-teal-800 leading-relaxed mb-3">{aiInsight.summary}</p>
             {aiInsight.actions.slice(0, 2).map((a, i) => (
-              <div key={i} className="flex items-start gap-2 text-sm text-violet-700 mb-1.5">
-                <span className="w-5 h-5 rounded-full bg-violet-200 text-violet-700 text-xs flex items-center justify-center shrink-0 mt-0.5">{i + 1}</span>
+              <div key={i} className="flex items-start gap-2 text-sm text-teal-700 mb-1.5">
+                <span className="w-5 h-5 rounded-full bg-teal-200 text-teal-700 text-xs flex items-center justify-center shrink-0 mt-0.5">{i + 1}</span>
                 <span>{a}</span>
               </div>
             ))}
-            <button onClick={onGoToCoach} className="mt-3 text-sm font-medium text-violet-700 hover:text-violet-900 underline underline-offset-2">
+            <button onClick={onGoToCoach} className="mt-3 text-sm font-medium text-teal-700 hover:text-teal-900 underline underline-offset-2">
               View full plan →
             </button>
           </div>
         ) : (
           <div>
-            <p className="text-sm text-violet-700 mb-3">
+            <p className="text-sm text-teal-700 mb-3">
               Get a personalized weekly action plan based on your spending, debts, and budget goals.
             </p>
             <button
               onClick={onGoToCoach}
-              className="px-4 py-2 bg-violet-600 text-white text-sm font-medium rounded-xl hover:bg-violet-700 transition-colors"
+              className="px-4 py-2 bg-teal-600 text-white text-sm font-medium rounded-xl hover:bg-teal-700 transition-colors"
             >
               Generate my plan
             </button>

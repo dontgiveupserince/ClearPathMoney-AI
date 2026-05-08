@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { TrendingDown, Mail, Lock, Eye, EyeOff, ArrowRight, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { TrendingDown, Mail, Lock, Eye, EyeOff, ArrowRight, AlertCircle, CheckCircle2, User } from 'lucide-react';
 
 type Mode = 'login' | 'signup' | 'reset';
 
 export interface AuthHandlers {
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
-  signUp: (email: string, password: string) => Promise<{ error: string | null }>;
+  signUp: (email: string, password: string, firstName: string, lastName: string) => Promise<{ error: string | null }>;
   resetPassword: (email: string) => Promise<{ error: string | null }>;
 }
 
@@ -18,6 +18,8 @@ export default function AuthPage({ handlers }: Props) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -29,6 +31,8 @@ export default function AuthPage({ handlers }: Props) {
     setSuccess('');
     setPassword('');
     setConfirmPassword('');
+    setFirstName('');
+    setLastName('');
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -50,10 +54,12 @@ export default function AuthPage({ handlers }: Props) {
     if (!password) { setError('Please enter your password.'); return; }
 
     if (mode === 'signup') {
+      if (!firstName.trim()) { setError('Please enter your first name.'); return; }
+      if (!lastName.trim()) { setError('Please enter your last name.'); return; }
       if (password.length < 6) { setError('Password must be at least 6 characters.'); return; }
       if (password !== confirmPassword) { setError('Passwords do not match.'); return; }
       setLoading(true);
-      const { error: err } = await handlers.signUp(email.trim(), password);
+      const { error: err } = await handlers.signUp(email.trim(), password, firstName.trim(), lastName.trim());
       setLoading(false);
       if (err) { setError(err); return; }
       return;
@@ -104,6 +110,35 @@ export default function AuthPage({ handlers }: Props) {
 
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-7">
             <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+
+              {/* First / Last name — signup only */}
+              {mode === 'signup' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="relative">
+                    <User size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="text"
+                      value={firstName}
+                      onChange={(e) => setFirstName(e.target.value)}
+                      placeholder="First name"
+                      autoComplete="given-name"
+                      className={inputCls}
+                    />
+                  </div>
+                  <div className="relative">
+                    <User size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="text"
+                      value={lastName}
+                      onChange={(e) => setLastName(e.target.value)}
+                      placeholder="Last name"
+                      autoComplete="family-name"
+                      className={inputCls}
+                    />
+                  </div>
+                </div>
+              )}
+
               {/* Email */}
               <div className="relative">
                 <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />

@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { supabase, supabaseConfigured } from './lib/supabase';
 import {
-  getLocalSession, signInLocal, signUpLocal, resetPasswordLocal, clearLocalSession, LocalSession,
+  getLocalSession, signInLocal, signUpLocal, resetPasswordLocal, clearLocalSession,
 } from './lib/localAuth';
 import AuthPage, { AuthHandlers } from './components/auth/AuthPage';
+import CompleteProfileModal from './components/auth/CompleteProfileModal';
 import AppShell, { Page } from './components/AppShell';
 import Dashboard from './components/dashboard/Dashboard';
 import BudgetCategories from './components/budget/BudgetCategories';
@@ -24,11 +25,36 @@ import { Category, Transaction, Debt, AppSettings, AIInsight } from './types/fin
 
 interface AppSession {
   email?: string;
+  userId?: string;
+}
+
+interface UserProfile {
+  firstName: string;
+  lastName: string;
+}
+
+async function fetchProfile(userId: string): Promise<UserProfile | null> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('first_name, last_name')
+    .eq('id', userId)
+    .maybeSingle();
+  if (error || !data) return null;
+  return { firstName: data.first_name ?? '', lastName: data.last_name ?? '' };
+}
+
+async function upsertProfile(userId: string, firstName: string, lastName: string): Promise<{ error: string | null }> {
+  const { error } = await supabase
+    .from('profiles')
+    .upsert({ id: userId, first_name: firstName, last_name: lastName, updated_at: new Date().toISOString() });
+  return { error: error?.message ?? null };
 }
 
 export default function App() {
-  // undefined = loading, null = not logged in, object = logged in
   const [session, setSession] = useState<AppSession | null | undefined>(undefined);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [needsProfile, setNeedsProfile] = useState(false);
   const [page, setPage] = useState<Page>('dashboard');
   const [categories, setCategories] = useState<Category[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -39,10 +65,10 @@ export default function App() {
   useEffect(() => {
     if (supabaseConfigured) {
       supabase.auth.getSession().then(({ data: { session: s } }) => {
-        setSession(s ? { email: s.user.email } : null);
+        setSession(s ? { email: s.user.email, userId: s.user.id } : null);
       });
       const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
-        setSession(s ? { email: s.user.email } : null);
+        setSession(s ? { email: s.user.email, userId: s.user.id } : null);
       });
       return () => subscription.unsubscribe();
     } else {
@@ -51,6 +77,22 @@ export default function App() {
     }
   }, []);
 
+  // Load profile when session is established
+  useEffect(() => {
+    if (!session?.userId) return;
+    setProfileLoading(true);
+    fetchProfile(session.userId).then((p) => {
+      setProfileLoading(false);
+      if (p) {
+        setProfile(p);
+        setNeedsProfile(!p.firstName.trim() || !p.lastName.trim());
+      } else {
+        setNeedsProfile(true);
+      }
+    });
+  }, [session?.userId]);
+
+  // Load local data when session is ready
   useEffect(() => {
     if (!session) return;
     initializeDefaults();
@@ -60,6 +102,16 @@ export default function App() {
     setSettings(getSettings());
     setAIInsight(getAIInsight());
   }, [session]);
+
+  async function handleCompleteProfile(firstName: string, lastName: string): Promise<{ error: string | null }> {
+    if (!session?.userId) return { error: 'Not logged in.' };
+    const result = await upsertProfile(session.userId, firstName, lastName);
+    if (!result.error) {
+      setProfile({ firstName, lastName });
+      setNeedsProfile(false);
+    }
+    return result;
+  }
 
   function handleSignOut() {
     if (supabaseConfigured) {
@@ -76,9 +128,13 @@ export default function App() {
           const { error } = await supabase.auth.signInWithPassword({ email, password });
           return { error: error?.message ?? null };
         },
-        signUp: async (email, password) => {
-          const { error } = await supabase.auth.signUp({ email, password });
-          return { error: error?.message ?? null };
+        signUp: async (email, password, firstName, lastName) => {
+          const { data, error } = await supabase.auth.signUp({ email, password });
+          if (error) return { error: error.message };
+          if (data.user) {
+            await upsertProfile(data.user.id, firstName, lastName);
+          }
+          return { error: null };
         },
         resetPassword: async (email) => {
           const { error } = await supabase.auth.resetPasswordForEmail(email);
@@ -99,7 +155,7 @@ export default function App() {
         resetPassword: resetPasswordLocal,
       };
 
-  if (session === undefined) {
+  if (session === undefined || (session && supabaseConfigured && profileLoading)) {
     return (
       <div className="min-h-screen bg-[#F7F6F2] flex items-center justify-center">
         <div className="w-8 h-8 border-2 border-teal-200 border-t-teal-600 rounded-full animate-spin" />
@@ -146,59 +202,65 @@ export default function App() {
   }
 
   return (
-    <AppShell page={page} onNav={setPage} userEmail={session.email} onSignOut={handleSignOut}>
-      {page === 'dashboard' && (
-        <Dashboard
-          categories={categories}
-          transactions={transactions}
-          debts={debts}
-          settings={settings}
-          aiInsight={aiInsight}
-          onGoToCoach={() => setPage('coach')}
-        />
+    <>
+      {needsProfile && supabaseConfigured && (
+        <CompleteProfileModal onComplete={handleCompleteProfile} />
       )}
-      {page === 'budget' && (
-        <BudgetCategories
-          categories={categories}
-          transactions={transactions}
-          onChange={handleCategoriesChange}
-        />
-      )}
-      {page === 'expenses' && (
-        <Expenses
-          transactions={transactions}
-          categories={categories}
-          onChange={handleTransactionsChange}
-        />
-      )}
-      {page === 'debts' && (
-        <Debts debts={debts} onChange={handleDebtsChange} />
-      )}
-      {page === 'planner' && (
-        <DebtPayoffPlanner
-          debts={debts}
-          settings={settings}
-          onSettingsChange={handleSettingsChange}
-        />
-      )}
-      {page === 'coach' && (
-        <AICoach
-          categories={categories}
-          transactions={transactions}
-          debts={debts}
-          settings={settings}
-          insight={aiInsight}
-          onInsightGenerated={handleInsightGenerated}
-          onSettingsChange={handleSettingsChange}
-        />
-      )}
-      {page === 'settings' && (
-        <Settings
-          settings={settings}
-          onChange={handleSettingsChange}
-          onDemoLoaded={handleDemoLoaded}
-        />
-      )}
-    </AppShell>
+      <AppShell page={page} onNav={setPage} userEmail={session.email} onSignOut={handleSignOut}>
+        {page === 'dashboard' && (
+          <Dashboard
+            categories={categories}
+            transactions={transactions}
+            debts={debts}
+            settings={settings}
+            aiInsight={aiInsight}
+            onGoToCoach={() => setPage('coach')}
+            firstName={profile?.firstName}
+          />
+        )}
+        {page === 'budget' && (
+          <BudgetCategories
+            categories={categories}
+            transactions={transactions}
+            onChange={handleCategoriesChange}
+          />
+        )}
+        {page === 'expenses' && (
+          <Expenses
+            transactions={transactions}
+            categories={categories}
+            onChange={handleTransactionsChange}
+          />
+        )}
+        {page === 'debts' && (
+          <Debts debts={debts} onChange={handleDebtsChange} />
+        )}
+        {page === 'planner' && (
+          <DebtPayoffPlanner
+            debts={debts}
+            settings={settings}
+            onSettingsChange={handleSettingsChange}
+          />
+        )}
+        {page === 'coach' && (
+          <AICoach
+            categories={categories}
+            transactions={transactions}
+            debts={debts}
+            settings={settings}
+            insight={aiInsight}
+            onInsightGenerated={handleInsightGenerated}
+            onSettingsChange={handleSettingsChange}
+          />
+        )}
+        {page === 'settings' && (
+          <Settings
+            settings={settings}
+            onChange={handleSettingsChange}
+            onDemoLoaded={handleDemoLoaded}
+          />
+        )}
+      </AppShell>
+    </>
   );
 }
