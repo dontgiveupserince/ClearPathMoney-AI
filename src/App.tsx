@@ -143,18 +143,20 @@ export default function App() {
         signUp: async (email, password, firstName, lastName) => {
           const { data, error } = await supabase.auth.signUp({ email, password });
           if (error) return { error: error.message };
+
+          // Try immediate sign-in (works when email confirmation is disabled)
+          const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+          if (!signInError && signInData.session && signInData.user) {
+            await upsertProfile(signInData.user.id, firstName, lastName);
+            setSession({ email: signInData.user.email, userId: signInData.user.id });
+            return { error: null };
+          }
+
+          // Email confirmation is required — profile saved once user confirms
           if (data.user) {
             await upsertProfile(data.user.id, firstName, lastName);
           }
-          // Email confirmation disabled: session returned immediately, set it now
-          if (data.session && data.user) {
-            setSession({ email: data.user.email, userId: data.user.id });
-          }
-          // Email confirmation required: session is null, show confirmation message
-          if (!data.session) {
-            return { error: '__confirm__' };
-          }
-          return { error: null };
+          return { error: '__confirm__' };
         },
         resetPassword: async (email) => {
           const { error } = await supabase.auth.resetPasswordForEmail(email);
