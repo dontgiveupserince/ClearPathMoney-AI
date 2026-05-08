@@ -146,6 +146,14 @@ export default function App() {
           if (data.user) {
             await upsertProfile(data.user.id, firstName, lastName);
           }
+          // Email confirmation disabled: session returned immediately, set it now
+          if (data.session && data.user) {
+            setSession({ email: data.user.email, userId: data.user.id });
+          }
+          // Email confirmation required: session is null, show confirmation message
+          if (!data.session) {
+            return { error: '__confirm__' };
+          }
           return { error: null };
         },
         resetPassword: async (email) => {

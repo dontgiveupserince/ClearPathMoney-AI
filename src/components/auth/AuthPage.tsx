@@ -61,6 +61,11 @@ export default function AuthPage({ handlers }: Props) {
       setLoading(true);
       const { error: err } = await handlers.signUp(email.trim(), password, firstName.trim(), lastName.trim());
       setLoading(false);
+      if (err === '__confirm__') {
+        setSuccess('Account created! Please check your email to confirm your account, then sign in.');
+        switchMode('login');
+        return;
+      }
       if (err) { setError(err); return; }
       return;
     }
