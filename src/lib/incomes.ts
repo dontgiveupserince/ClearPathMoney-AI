@@ -6,7 +6,6 @@ interface IncomeRow {
   user_id: string;
   source_name: string;
   income_type: IncomeType;
-  gross_amount: number | string;
   net_amount: number | string;
   frequency: IncomeFrequency;
   notes: string | null;
@@ -19,7 +18,6 @@ function rowToIncome(r: IncomeRow): Income {
     id: r.id,
     sourceName: r.source_name,
     type: r.income_type,
-    grossAmount: Number(r.gross_amount),
     netAmount: Number(r.net_amount),
     frequency: r.frequency,
     notes: r.notes ?? undefined,
@@ -31,7 +29,6 @@ function incomeToRow(userId: string, income: Omit<Income, 'id'>) {
     user_id: userId,
     source_name: income.sourceName,
     income_type: income.type,
-    gross_amount: income.grossAmount,
     net_amount: income.netAmount,
     frequency: income.frequency,
     notes: income.notes && income.notes.trim() ? income.notes.trim() : null,
@@ -106,8 +103,4 @@ export function monthlyAmount(amount: number, frequency: IncomeFrequency): numbe
 
 export function totalMonthlyNet(incomes: Income[]): number {
   return incomes.reduce((s, i) => s + monthlyAmount(i.netAmount, i.frequency), 0);
-}
-
-export function totalMonthlyGross(incomes: Income[]): number {
-  return incomes.reduce((s, i) => s + monthlyAmount(i.grossAmount, i.frequency), 0);
 }

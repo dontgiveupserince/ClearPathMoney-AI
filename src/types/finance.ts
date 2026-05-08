@@ -51,7 +51,6 @@ export interface Income {
   id: string;
   sourceName: string;
   type: IncomeType;
-  grossAmount: number;
   netAmount: number;
   frequency: IncomeFrequency;
   notes?: string;

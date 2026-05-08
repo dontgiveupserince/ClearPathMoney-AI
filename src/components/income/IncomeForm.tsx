@@ -12,7 +12,6 @@ interface Props {
 export default function IncomeForm({ initial, onSave, onCancel, saving, serverError }: Props) {
   const [sourceName, setSourceName] = useState(initial?.sourceName ?? '');
   const [type, setType] = useState<Income['type']>(initial?.type ?? 'salary');
-  const [grossAmount, setGrossAmount] = useState(initial?.grossAmount?.toString() ?? '');
   const [netAmount, setNetAmount] = useState(initial?.netAmount?.toString() ?? '');
   const [frequency, setFrequency] = useState<Income['frequency']>(initial?.frequency ?? 'monthly');
   const [notes, setNotes] = useState(initial?.notes ?? '');
@@ -21,14 +20,8 @@ export default function IncomeForm({ initial, onSave, onCancel, saving, serverEr
   function validate() {
     const e: Record<string, string> = {};
     if (!sourceName.trim()) e.sourceName = 'Source name is required';
-    if (!grossAmount || isNaN(Number(grossAmount)) || Number(grossAmount) < 0) {
-      e.grossAmount = 'Enter a valid gross amount';
-    }
     if (!netAmount || isNaN(Number(netAmount)) || Number(netAmount) < 0) {
       e.netAmount = 'Enter a valid net amount';
-    }
-    if (!e.grossAmount && !e.netAmount && Number(netAmount) > Number(grossAmount)) {
-      e.netAmount = 'Net cannot exceed gross';
     }
     return e;
   }
@@ -41,7 +34,6 @@ export default function IncomeForm({ initial, onSave, onCancel, saving, serverEr
     onSave({
       sourceName: sourceName.trim(),
       type,
-      grossAmount: parseFloat(grossAmount),
       netAmount: parseFloat(netAmount),
       frequency,
       notes: notes.trim() || undefined,
@@ -74,35 +66,19 @@ export default function IncomeForm({ initial, onSave, onCancel, saving, serverEr
         </select>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Gross Income ($)</label>
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            value={grossAmount}
-            onChange={(e) => setGrossAmount(e.target.value)}
-            placeholder="0.00"
-            className={inputCls}
-          />
-          <p className="text-xs text-gray-400 mt-1">Before tax</p>
-          {errors.grossAmount && <p className="text-red-500 text-xs mt-1">{errors.grossAmount}</p>}
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Net Income ($)</label>
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            value={netAmount}
-            onChange={(e) => setNetAmount(e.target.value)}
-            placeholder="0.00"
-            className={inputCls}
-          />
-          <p className="text-xs text-gray-400 mt-1">After tax</p>
-          {errors.netAmount && <p className="text-red-500 text-xs mt-1">{errors.netAmount}</p>}
-        </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1.5">Net Income ($)</label>
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          value={netAmount}
+          onChange={(e) => setNetAmount(e.target.value)}
+          placeholder="0.00"
+          className={inputCls}
+        />
+        <p className="text-xs text-gray-400 mt-1">The amount that hits your bank account, after tax and deductions.</p>
+        {errors.netAmount && <p className="text-red-500 text-xs mt-1">{errors.netAmount}</p>}
       </div>
 
       <div>

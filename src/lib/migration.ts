@@ -218,7 +218,6 @@ export async function loadDemoIntoSupabase(userId: string): Promise<{ error: str
   await createIncome(userId, {
     sourceName: 'Salary',
     type: 'salary',
-    grossAmount: 6500,
     netAmount: 5200,
     frequency: 'monthly',
     notes: 'Demo income',

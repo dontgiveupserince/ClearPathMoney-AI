@@ -12,7 +12,6 @@ interface Props {
   onInsightGenerated: (insight: AIInsight) => void;
   onSettingsChange: (s: AppSettings) => void;
   monthlyNetIncome: number;
-  monthlyGrossIncome: number;
 }
 
 const EDGE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-coach`;
@@ -24,14 +23,12 @@ function buildContext(
   debts: Debt[],
   settings: AppSettings,
   monthlyNetIncome: number,
-  monthlyGrossIncome: number,
 ) {
   const categorySpending = getCategorySpending(transactions, categories);
   const totalExpenses = getTotalExpenses(transactions);
   const totalDebt = debts.reduce((s, d) => s + d.balance, 0);
   return {
     monthlyIncome: monthlyNetIncome,
-    monthlyGrossIncome,
     totalExpenses,
     totalDebt,
     categories: categorySpending.map((c) => ({
@@ -64,7 +61,7 @@ async function callEdge(body: object): Promise<{ data?: unknown; error?: string 
   }
 }
 
-export default function AICoach({ categories, transactions, debts, settings, insight, onInsightGenerated, onSettingsChange, monthlyNetIncome, monthlyGrossIncome }: Props) {
+export default function AICoach({ categories, transactions, debts, settings, insight, onInsightGenerated, onSettingsChange, monthlyNetIncome }: Props) {
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState('');
   const [generating, setGenerating] = useState(false);
@@ -78,7 +75,7 @@ export default function AICoach({ categories, transactions, debts, settings, ins
   async function handleGenerate() {
     setGenerating(true);
     setError('');
-    const context = buildContext(categories, transactions, debts, settings, monthlyNetIncome, monthlyGrossIncome);
+    const context = buildContext(categories, transactions, debts, settings, monthlyNetIncome);
     const { data, error: err } = await callEdge({ action: 'generate_plan', context });
     setGenerating(false);
     if (err) { setError(err); return; }
@@ -98,7 +95,7 @@ export default function AICoach({ categories, transactions, debts, settings, ins
     if (!question.trim()) return;
     setAnswering(true);
     setError('');
-    const context = buildContext(categories, transactions, debts, settings, monthlyNetIncome, monthlyGrossIncome);
+    const context = buildContext(categories, transactions, debts, settings, monthlyNetIncome);
     const { data, error: err } = await callEdge({ action: 'ask_question', context, question });
     setAnswering(false);
     if (err) { setError(err); return; }

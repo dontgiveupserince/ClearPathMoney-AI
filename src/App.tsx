@@ -16,7 +16,7 @@ import AICoach from './components/coach/AICoach';
 import Settings from './components/Settings';
 import { getAIInsight, saveAIInsight, clearAIInsight } from './lib/storage';
 import {
-  fetchIncomes, createIncome, updateIncome, deleteIncome, totalMonthlyNet, totalMonthlyGross,
+  fetchIncomes, createIncome, updateIncome, deleteIncome, totalMonthlyNet,
 } from './lib/incomes';
 import {
   fetchCategories, createCategory, updateCategory, deleteCategory, deleteAllCategories,
@@ -350,7 +350,6 @@ export default function App() {
   }
 
   const monthlyNetIncome = totalMonthlyNet(incomes);
-  const monthlyGrossIncome = totalMonthlyGross(incomes);
 
   return (
     <>
@@ -368,7 +367,6 @@ export default function App() {
             onGoToCoach={() => setPage('coach')}
             firstName={profile?.firstName}
             monthlyNetIncome={monthlyNetIncome}
-            monthlyGrossIncome={monthlyGrossIncome}
           />
         )}
         {page === 'budget' && (
@@ -419,7 +417,6 @@ export default function App() {
             onInsightGenerated={handleInsightGenerated}
             onSettingsChange={handleSettingsChange}
             monthlyNetIncome={monthlyNetIncome}
-            monthlyGrossIncome={monthlyGrossIncome}
           />
         )}
         {page === 'settings' && (

@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import {
-  Plus, CreditCard as Edit2, Trash2, Briefcase, Wallet, TrendingUp, Building2,
+  Plus, CreditCard as Edit2, Trash2, Briefcase, Wallet, Building2,
 } from 'lucide-react';
 import { Income as IncomeT, INCOME_TYPES, INCOME_FREQUENCIES } from '../../types/finance';
 import { formatCurrency } from '../../lib/calculations';
-import { monthlyAmount, totalMonthlyNet, totalMonthlyGross } from '../../lib/incomes';
+import { monthlyAmount, totalMonthlyNet } from '../../lib/incomes';
 import Modal from '../shared/Modal';
 import EmptyState from '../shared/EmptyState';
 import IncomeForm from './IncomeForm';
@@ -71,7 +71,6 @@ export default function Income({ incomes, configured, onSave, onDelete }: Props)
   }
 
   const monthlyNet = totalMonthlyNet(incomes);
-  const monthlyGross = totalMonthlyGross(incomes);
 
   return (
     <div className="space-y-6">
@@ -97,7 +96,7 @@ export default function Income({ incomes, configured, onSave, onDelete }: Props)
       )}
 
       {incomes.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
             <div className="flex items-center gap-2 mb-2">
               <div className="w-8 h-8 rounded-lg bg-teal-50 flex items-center justify-center">
@@ -106,17 +105,7 @@ export default function Income({ incomes, configured, onSave, onDelete }: Props)
               <p className="text-sm text-gray-500">Total Monthly Net</p>
             </div>
             <p className="font-heading font-bold text-2xl text-gray-900">{formatCurrency(monthlyNet)}</p>
-            <p className="text-xs text-gray-400 mt-1">After tax — used for budgeting</p>
-          </div>
-          <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
-                <TrendingUp size={15} className="text-blue-600" />
-              </div>
-              <p className="text-sm text-gray-500">Total Monthly Gross</p>
-            </div>
-            <p className="font-heading font-bold text-2xl text-gray-900">{formatCurrency(monthlyGross)}</p>
-            <p className="text-xs text-gray-400 mt-1">Before tax</p>
+            <p className="text-xs text-gray-400 mt-1">What hits your bank account each month</p>
           </div>
           <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
             <div className="flex items-center gap-2 mb-2">
@@ -173,16 +162,10 @@ export default function Income({ incomes, configured, onSave, onDelete }: Props)
                   </div>
                 </div>
                 <p className="font-heading font-bold text-2xl text-gray-900">{formatCurrency(income.netAmount)}</p>
-                <p className="text-xs text-gray-500 mb-3">net / {freqLabel}</p>
+                <p className="text-xs text-gray-500 mb-3">per {freqLabel}</p>
                 <div className="space-y-2 pt-3 border-t border-gray-100">
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-500">Gross</span>
-                    <span className="font-semibold text-gray-700">
-                      {formatCurrency(income.grossAmount)} / {freqLabel}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-500">Monthly net</span>
+                    <span className="text-gray-500">Monthly equivalent</span>
                     <span className="font-semibold" style={{ color }}>{formatCurrency(monthlyNetAmt)}</span>
                   </div>
                 </div>

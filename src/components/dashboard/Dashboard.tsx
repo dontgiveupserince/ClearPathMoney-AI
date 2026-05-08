@@ -76,10 +76,9 @@ interface Props {
   onGoToCoach: () => void;
   firstName?: string;
   monthlyNetIncome: number;
-  monthlyGrossIncome: number;
 }
 
-export default function Dashboard({ categories, transactions, debts, settings, aiInsight, onGoToCoach, firstName, monthlyNetIncome, monthlyGrossIncome }: Props) {
+export default function Dashboard({ categories, transactions, debts, settings, aiInsight, onGoToCoach, firstName, monthlyNetIncome }: Props) {
   const totalExpenses = getTotalExpenses(transactions);
   const hasIncome = monthlyNetIncome > 0;
   const remaining = monthlyNetIncome - totalExpenses;
@@ -124,8 +123,6 @@ export default function Dashboard({ categories, transactions, debts, settings, a
           value={hasIncome ? formatCurrency(monthlyNetIncome) : '—'}
           icon={Wallet}
           color="bg-teal-600"
-          sub={monthlyGrossIncome > 0 ? `Gross ${formatCurrency(monthlyGrossIncome)}` : undefined}
-          subMuted
         />
         <SummaryCard
           label="Total Expenses"
