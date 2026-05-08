@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Plus, CreditCard as Edit2, Trash2, Receipt, Search, Filter } from 'lucide-react';
 import { Transaction, Category } from '../../types/finance';
 import { formatCurrency, formatDate } from '../../lib/calculations';
@@ -9,29 +9,40 @@ import ExpenseForm from './ExpenseForm';
 interface Props {
   transactions: Transaction[];
   categories: Category[];
-  onChange: (txns: Transaction[]) => void;
+  onSave: (data: Omit<Transaction, 'id'>, id?: string) => Promise<{ error: string | null }>;
+  onDelete: (id: string) => Promise<{ error: string | null }>;
 }
 
-export default function Expenses({ transactions, categories, onChange }: Props) {
+export default function Expenses({ transactions, categories, onSave, onDelete }: Props) {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [search, setSearch] = useState('');
   const [filterCat, setFilterCat] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [serverError, setServerError] = useState<string | null>(null);
 
-  function handleSave(data: Omit<Transaction, 'id'>) {
-    if (editing) {
-      onChange(transactions.map((t) => (t.id === editing.id ? { ...editing, ...data } : t)));
-    } else {
-      onChange([{ ...data, id: `txn_${Date.now()}` }, ...transactions]);
+  async function handleSave(data: Omit<Transaction, 'id'>) {
+    setSaving(true);
+    setServerError(null);
+    const { error } = await onSave(data, editing?.id);
+    setSaving(false);
+    if (error) {
+      setServerError(error);
+      return;
     }
     setShowForm(false);
     setEditing(null);
   }
 
-  function handleDelete(id: string) {
+  async function handleDelete(id: string) {
     if (!confirm('Delete this expense?')) return;
-    onChange(transactions.filter((t) => t.id !== id));
+    const { error } = await onDelete(id);
+    if (error) alert(`Could not delete: ${error}`);
   }
+
+  function openAdd() { setEditing(null); setServerError(null); setShowForm(true); }
+  function openEdit(t: Transaction) { setEditing(t); setServerError(null); setShowForm(true); }
+  function closeForm() { if (saving) return; setShowForm(false); setEditing(null); setServerError(null); }
 
   const filtered = transactions
     .filter((t) => {
@@ -51,7 +62,7 @@ export default function Expenses({ transactions, categories, onChange }: Props) 
           <p className="text-gray-500 text-sm mt-1">Track every dollar that goes out.</p>
         </div>
         <button
-          onClick={() => { setEditing(null); setShowForm(true); }}
+          onClick={openAdd}
           className="flex items-center gap-2 px-4 py-2.5 bg-teal-600 text-white text-sm font-medium rounded-xl hover:bg-teal-700 transition-colors"
         >
           <Plus size={16} />
@@ -92,7 +103,7 @@ export default function Expenses({ transactions, categories, onChange }: Props) 
           icon={Receipt}
           title="No expenses yet"
           description="Start logging your expenses to see where your money goes and stay on top of your budget."
-          action={{ label: 'Log your first expense', onClick: () => setShowForm(true) }}
+          action={{ label: 'Log your first expense', onClick: openAdd }}
         />
       ) : filtered.length === 0 ? (
         <div className="bg-white rounded-2xl p-8 text-center shadow-sm border border-gray-100">
@@ -124,7 +135,7 @@ export default function Expenses({ transactions, categories, onChange }: Props) 
                   </div>
                   <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
-                      onClick={() => { setEditing(t); setShowForm(true); }}
+                      onClick={() => openEdit(t)}
                       className="p-1.5 text-gray-400 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
                     >
                       <Edit2 size={14} />
@@ -144,15 +155,14 @@ export default function Expenses({ transactions, categories, onChange }: Props) 
       )}
 
       {showForm && (
-        <Modal
-          title={editing ? 'Edit Expense' : 'Add Expense'}
-          onClose={() => { setShowForm(false); setEditing(null); }}
-        >
+        <Modal title={editing ? 'Edit Expense' : 'Add Expense'} onClose={closeForm}>
           <ExpenseForm
             initial={editing ?? undefined}
             categories={categories}
             onSave={handleSave}
-            onCancel={() => { setShowForm(false); setEditing(null); }}
+            onCancel={closeForm}
+            saving={saving}
+            serverError={serverError}
           />
         </Modal>
       )}

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Plus, CreditCard as Edit2, Trash2, CreditCard, Percent } from 'lucide-react';
 import { Debt, DEBT_TYPES } from '../../types/finance';
 import { formatCurrency } from '../../lib/calculations';
@@ -8,7 +8,8 @@ import DebtForm from './DebtForm';
 
 interface Props {
   debts: Debt[];
-  onChange: (debts: Debt[]) => void;
+  onSave: (data: Omit<Debt, 'id'>, id?: string) => Promise<{ error: string | null }>;
+  onDelete: (id: string) => Promise<{ error: string | null }>;
 }
 
 const TYPE_COLORS: Record<Debt['type'], string> = {
@@ -21,24 +22,34 @@ const TYPE_COLORS: Record<Debt['type'], string> = {
   other: '#6B7280',
 };
 
-export default function Debts({ debts, onChange }: Props) {
+export default function Debts({ debts, onSave, onDelete }: Props) {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Debt | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [serverError, setServerError] = useState<string | null>(null);
 
-  function handleSave(data: Omit<Debt, 'id'>) {
-    if (editing) {
-      onChange(debts.map((d) => (d.id === editing.id ? { ...editing, ...data } : d)));
-    } else {
-      onChange([...debts, { ...data, id: `debt_${Date.now()}` }]);
+  async function handleSave(data: Omit<Debt, 'id'>) {
+    setSaving(true);
+    setServerError(null);
+    const { error } = await onSave(data, editing?.id);
+    setSaving(false);
+    if (error) {
+      setServerError(error);
+      return;
     }
     setShowForm(false);
     setEditing(null);
   }
 
-  function handleDelete(id: string) {
+  async function handleDelete(id: string) {
     if (!confirm('Remove this debt?')) return;
-    onChange(debts.filter((d) => d.id !== id));
+    const { error } = await onDelete(id);
+    if (error) alert(`Could not delete: ${error}`);
   }
+
+  function openAdd() { setEditing(null); setServerError(null); setShowForm(true); }
+  function openEdit(d: Debt) { setEditing(d); setServerError(null); setShowForm(true); }
+  function closeForm() { if (saving) return; setShowForm(false); setEditing(null); setServerError(null); }
 
   const totalBalance = debts.reduce((s, d) => s + d.balance, 0);
   const totalMinPayment = debts.reduce((s, d) => s + d.minimumPayment, 0);
@@ -51,7 +62,7 @@ export default function Debts({ debts, onChange }: Props) {
           <p className="text-gray-500 text-sm mt-1">Track every balance and stay on the path to freedom.</p>
         </div>
         <button
-          onClick={() => { setEditing(null); setShowForm(true); }}
+          onClick={openAdd}
           className="flex items-center gap-2 px-4 py-2.5 bg-teal-600 text-white text-sm font-medium rounded-xl hover:bg-teal-700 transition-colors"
         >
           <Plus size={16} />
@@ -77,7 +88,7 @@ export default function Debts({ debts, onChange }: Props) {
           icon={CreditCard}
           title="No debts tracked"
           description="Add your debts here to see your total balance, plan your payoff, and estimate your debt-free date."
-          action={{ label: 'Add your first debt', onClick: () => setShowForm(true) }}
+          action={{ label: 'Add your first debt', onClick: openAdd }}
         />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -94,7 +105,7 @@ export default function Debts({ debts, onChange }: Props) {
                     <p className="text-xs text-gray-500 mt-0.5">{DEBT_TYPES[debt.type]}</p>
                   </div>
                   <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={() => { setEditing(debt); setShowForm(true); }} className="p-1.5 text-gray-400 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-colors">
+                    <button onClick={() => openEdit(debt)} className="p-1.5 text-gray-400 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-colors">
                       <Edit2 size={14} />
                     </button>
                     <button onClick={() => handleDelete(debt.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
@@ -132,11 +143,13 @@ export default function Debts({ debts, onChange }: Props) {
       )}
 
       {showForm && (
-        <Modal title={editing ? 'Edit Debt' : 'Add Debt'} onClose={() => { setShowForm(false); setEditing(null); }}>
+        <Modal title={editing ? 'Edit Debt' : 'Add Debt'} onClose={closeForm}>
           <DebtForm
             initial={editing ?? undefined}
             onSave={handleSave}
-            onCancel={() => { setShowForm(false); setEditing(null); }}
+            onCancel={closeForm}
+            saving={saving}
+            serverError={serverError}
           />
         </Modal>
       )}

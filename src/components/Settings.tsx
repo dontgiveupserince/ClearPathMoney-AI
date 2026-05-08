@@ -1,28 +1,36 @@
-import { RotateCcw, Database } from 'lucide-react';
+import { useState } from 'react';
+import { RotateCcw, Database, Loader2 } from 'lucide-react';
 import { AppSettings } from '../types/finance';
-import { loadDemoData } from '../lib/storage';
 
 interface Props {
   settings: AppSettings;
-  onChange: (s: AppSettings) => void;
-  onDemoLoaded: () => void;
+  onChange: (s: AppSettings) => void | Promise<void>;
+  onLoadDemo: () => Promise<{ error: string | null }>;
+  onClearAll: () => Promise<{ error: string | null }>;
 }
 
-export default function Settings({ settings, onChange, onDemoLoaded }: Props) {
+export default function Settings({ settings, onChange, onLoadDemo, onClearAll }: Props) {
+  const [demoLoading, setDemoLoading] = useState(false);
+  const [clearLoading, setClearLoading] = useState(false);
+
   function handleCurrencyChange(currency: string) {
     onChange({ ...settings, currency });
   }
 
-  function handleLoadDemo() {
-    if (!confirm('Load demo data? This will replace your current data.')) return;
-    loadDemoData();
-    onDemoLoaded();
+  async function handleLoadDemo() {
+    if (!confirm('Load demo data? This will replace your current data in your account.')) return;
+    setDemoLoading(true);
+    const { error } = await onLoadDemo();
+    setDemoLoading(false);
+    if (error) alert(`Could not load demo: ${error}`);
   }
 
-  function handleClearAll() {
-    if (!confirm('Clear all your data? This cannot be undone.')) return;
-    localStorage.clear();
-    window.location.reload();
+  async function handleClearAll() {
+    if (!confirm('Clear all of your data? This will delete every category, expense, debt, income, and setting in your account. This cannot be undone.')) return;
+    setClearLoading(true);
+    const { error } = await onClearAll();
+    setClearLoading(false);
+    if (error) alert(`Could not clear data: ${error}`);
   }
 
   const inputCls = 'w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-white';
@@ -31,7 +39,7 @@ export default function Settings({ settings, onChange, onDemoLoaded }: Props) {
     <div className="space-y-6 max-w-lg">
       <div>
         <h1 className="font-heading font-bold text-2xl text-gray-900">Settings</h1>
-        <p className="text-gray-500 text-sm mt-1">App preferences. Income lives in its own section.</p>
+        <p className="text-gray-500 text-sm mt-1">App preferences. Income, categories, debts, and expenses live in their own sections.</p>
       </div>
 
       <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 space-y-4">
@@ -55,23 +63,24 @@ export default function Settings({ settings, onChange, onDemoLoaded }: Props) {
 
       <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 space-y-4">
         <h2 className="font-heading font-semibold text-gray-900">Data Management</h2>
-        <p className="text-sm text-gray-500">Income lives in your account on Supabase. Categories, expenses, and debts are kept locally in this browser.</p>
+        <p className="text-sm text-gray-500">All your financial data is stored in your account on Supabase, scoped to you.</p>
         <div className="flex flex-col gap-3">
           <button
             onClick={handleLoadDemo}
-            className="flex items-center gap-2 px-4 py-2.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-xl hover:bg-gray-50 transition-colors w-fit"
+            disabled={demoLoading || clearLoading}
+            className="flex items-center gap-2 px-4 py-2.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-xl hover:bg-gray-50 transition-colors w-fit disabled:opacity-50"
           >
-            <Database size={15} />
-            Load Demo Data
+            {demoLoading ? <Loader2 size={15} className="animate-spin" /> : <Database size={15} />}
+            {demoLoading ? 'Loading demo…' : 'Load Demo Data'}
           </button>
           <button
             onClick={handleClearAll}
-            className="flex items-center gap-2 px-4 py-2.5 border border-red-200 text-red-600 text-sm font-medium rounded-xl hover:bg-red-50 transition-colors w-fit"
+            disabled={demoLoading || clearLoading}
+            className="flex items-center gap-2 px-4 py-2.5 border border-red-200 text-red-600 text-sm font-medium rounded-xl hover:bg-red-50 transition-colors w-fit disabled:opacity-50"
           >
-            <RotateCcw size={15} />
-            Clear Local Data
+            {clearLoading ? <Loader2 size={15} className="animate-spin" /> : <RotateCcw size={15} />}
+            {clearLoading ? 'Clearing…' : 'Clear All My Data'}
           </button>
-          <p className="text-xs text-gray-400">Clearing local data won't remove income sources from your account.</p>
         </div>
       </div>
 

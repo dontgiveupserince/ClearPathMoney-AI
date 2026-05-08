@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase, supabaseConfigured } from './lib/supabase';
 import {
   getLocalSession, signInLocal, signUpLocal, resetPasswordLocal, clearLocalSession,
@@ -14,18 +14,26 @@ import Debts from './components/debts/Debts';
 import DebtPayoffPlanner from './components/planner/DebtPayoffPlanner';
 import AICoach from './components/coach/AICoach';
 import Settings from './components/Settings';
-import {
-  getCategories, saveCategories,
-  getTransactions, saveTransactions,
-  getDebts, saveDebts,
-  getSettings, saveSettings,
-  getAIInsight, saveAIInsight,
-  initializeDefaults,
-} from './lib/storage';
+import { getAIInsight, saveAIInsight, clearAIInsight } from './lib/storage';
 import {
   fetchIncomes, createIncome, updateIncome, deleteIncome, totalMonthlyNet, totalMonthlyGross,
 } from './lib/incomes';
-import { Category, Transaction, Debt, AppSettings, AIInsight, Income as IncomeT } from './types/finance';
+import {
+  fetchCategories, createCategory, updateCategory, deleteCategory, deleteAllCategories,
+} from './lib/categories';
+import {
+  fetchDebts, createDebt, updateDebt, deleteDebt, deleteAllDebts,
+} from './lib/debts';
+import {
+  fetchTransactions, createTransaction, updateTransaction, deleteTransaction, deleteAllTransactions,
+} from './lib/transactions';
+import {
+  fetchUserSettings, upsertUserSettings, deleteUserSettings, DEFAULT_SETTINGS,
+} from './lib/userSettings';
+import { runLegacyLocalStorageMigration, loadDemoIntoSupabase } from './lib/migration';
+import {
+  Category, Transaction, Debt, AppSettings, AIInsight, Income as IncomeT, DEFAULT_CATEGORIES,
+} from './types/finance';
 
 interface AppSession {
   email?: string;
@@ -71,9 +79,10 @@ export default function App() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [debts, setDebts] = useState<Debt[]>([]);
-  const [settings, setSettings] = useState<AppSettings>(getSettings());
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [aiInsight, setAIInsight] = useState<AIInsight | null>(null);
   const [incomes, setIncomes] = useState<IncomeT[]>([]);
+  const [dataLoading, setDataLoading] = useState(false);
 
   useEffect(() => {
     if (supabaseConfigured) {
@@ -90,7 +99,6 @@ export default function App() {
     }
   }, []);
 
-  // Load profile when session changes
   useEffect(() => {
     if (session === undefined) return;
     if (!session || !session.userId) {
@@ -109,45 +117,40 @@ export default function App() {
     });
   }, [session?.userId]);
 
-  // Load local data when session is ready
-  useEffect(() => {
-    if (!session) return;
-    initializeDefaults();
-    setCategories(getCategories());
-    setTransactions(getTransactions());
-    setDebts(getDebts());
-    setSettings(getSettings());
-    setAIInsight(getAIInsight());
-  }, [session?.userId]);
+  async function loadAllUserData(userId: string) {
+    setDataLoading(true);
+    // Run any one-time localStorage → Supabase migration before fetching, so the
+    // first fetch already includes migrated rows.
+    await runLegacyLocalStorageMigration(userId, DEFAULT_CATEGORIES);
 
-  // Load incomes from Supabase + one-time migration of legacy settings.monthlyIncome
-  async function loadIncomesFor(userId: string) {
-    const fetched = await fetchIncomes(userId);
-    const current = getSettings();
-    if (fetched.length === 0 && current.monthlyIncome > 0) {
-      const { income: seeded } = await createIncome(userId, {
-        sourceName: 'Salary',
-        type: 'salary',
-        grossAmount: current.monthlyIncome,
-        netAmount: current.monthlyIncome,
-        frequency: 'monthly',
-        notes: 'Imported from your previous Settings monthly income.',
-      });
-      const cleared: AppSettings = { ...current, monthlyIncome: 0 };
-      saveSettings(cleared);
-      setSettings(cleared);
-      setIncomes(seeded ? [seeded] : []);
-      return;
-    }
-    setIncomes(fetched);
+    const [cats, debtRows, txns, settingsRow, incomeRows] = await Promise.all([
+      fetchCategories(userId),
+      fetchDebts(userId),
+      fetchTransactions(userId),
+      fetchUserSettings(userId),
+      fetchIncomes(userId),
+    ]);
+
+    setCategories(cats);
+    setDebts(debtRows);
+    setTransactions(txns);
+    setSettings(settingsRow ?? DEFAULT_SETTINGS);
+    setIncomes(incomeRows);
+    setAIInsight(getAIInsight());
+    setDataLoading(false);
   }
 
   useEffect(() => {
     if (!session?.userId) {
+      setCategories([]);
+      setDebts([]);
+      setTransactions([]);
+      setSettings(DEFAULT_SETTINGS);
       setIncomes([]);
+      setAIInsight(null);
       return;
     }
-    loadIncomesFor(session.userId);
+    loadAllUserData(session.userId);
   }, [session?.userId]);
 
   async function handleCompleteProfile(firstName: string, lastName: string): Promise<{ error: string | null }> {
@@ -179,7 +182,6 @@ export default function App() {
           const { data, error } = await supabase.auth.signUp({ email, password });
           if (error) return { error: error.message };
 
-          // Try immediate sign-in (works when email confirmation is disabled)
           const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
           if (!signInError && signInData.session && signInData.user) {
             await upsertProfile(signInData.user.id, firstName, lastName);
@@ -187,7 +189,6 @@ export default function App() {
             return { error: null };
           }
 
-          // Email confirmation is required — profile saved once user confirms
           if (data.user) {
             await upsertProfile(data.user.id, firstName, lastName);
           }
@@ -212,7 +213,7 @@ export default function App() {
         resetPassword: resetPasswordLocal,
       };
 
-  if (session === undefined || (session && session.userId && profileLoading)) {
+  if (session === undefined || (session && session.userId && (profileLoading || dataLoading))) {
     return (
       <div className="min-h-screen bg-[#F7F6F2] flex items-center justify-center">
         <div className="w-8 h-8 border-2 border-teal-200 border-t-teal-600 rounded-full animate-spin" />
@@ -224,39 +225,63 @@ export default function App() {
     return <AuthPage handlers={authHandlers} />;
   }
 
-  function handleCategoriesChange(cats: Category[]) {
-    setCategories(cats);
-    saveCategories(cats);
+  // ------- Per-record handlers -------
+
+  async function handleCategorySave(data: Omit<Category, 'id'>, id?: string): Promise<{ error: string | null }> {
+    if (!session?.userId) return { error: 'Sign in to save categories.' };
+    if (id) {
+      const { category, error } = await updateCategory(session.userId, id, data);
+      if (category) setCategories((prev) => prev.map((c) => (c.id === id ? category : c)));
+      return { error };
+    }
+    const { category, error } = await createCategory(session.userId, data);
+    if (category) setCategories((prev) => [...prev, category]);
+    return { error };
   }
 
-  function handleTransactionsChange(txns: Transaction[]) {
-    setTransactions(txns);
-    saveTransactions(txns);
+  async function handleCategoryDelete(id: string): Promise<{ error: string | null }> {
+    if (!session?.userId) return { error: 'Sign in to delete categories.' };
+    const { error } = await deleteCategory(session.userId, id);
+    if (!error) setCategories((prev) => prev.filter((c) => c.id !== id));
+    return { error };
   }
 
-  function handleDebtsChange(d: Debt[]) {
-    setDebts(d);
-    saveDebts(d);
+  async function handleTransactionSave(data: Omit<Transaction, 'id'>, id?: string): Promise<{ error: string | null }> {
+    if (!session?.userId) return { error: 'Sign in to save expenses.' };
+    if (id) {
+      const { transaction, error } = await updateTransaction(session.userId, id, data);
+      if (transaction) setTransactions((prev) => prev.map((t) => (t.id === id ? transaction : t)));
+      return { error };
+    }
+    const { transaction, error } = await createTransaction(session.userId, data);
+    if (transaction) setTransactions((prev) => [transaction, ...prev]);
+    return { error };
   }
 
-  function handleSettingsChange(s: AppSettings) {
-    setSettings(s);
-    saveSettings(s);
+  async function handleTransactionDelete(id: string): Promise<{ error: string | null }> {
+    if (!session?.userId) return { error: 'Sign in to delete expenses.' };
+    const { error } = await deleteTransaction(session.userId, id);
+    if (!error) setTransactions((prev) => prev.filter((t) => t.id !== id));
+    return { error };
   }
 
-  function handleInsightGenerated(insight: AIInsight) {
-    setAIInsight(insight);
-    saveAIInsight(insight);
+  async function handleDebtSave(data: Omit<Debt, 'id'>, id?: string): Promise<{ error: string | null }> {
+    if (!session?.userId) return { error: 'Sign in to save debts.' };
+    if (id) {
+      const { debt, error } = await updateDebt(session.userId, id, data);
+      if (debt) setDebts((prev) => prev.map((d) => (d.id === id ? debt : d)));
+      return { error };
+    }
+    const { debt, error } = await createDebt(session.userId, data);
+    if (debt) setDebts((prev) => [...prev, debt]);
+    return { error };
   }
 
-  async function handleDemoLoaded() {
-    setCategories(getCategories());
-    setTransactions(getTransactions());
-    setDebts(getDebts());
-    setSettings(getSettings());
-    setAIInsight(null);
-    if (session?.userId) await loadIncomesFor(session.userId);
-    setPage('dashboard');
+  async function handleDebtDelete(id: string): Promise<{ error: string | null }> {
+    if (!session?.userId) return { error: 'Sign in to delete debts.' };
+    const { error } = await deleteDebt(session.userId, id);
+    if (!error) setDebts((prev) => prev.filter((d) => d.id !== id));
+    return { error };
   }
 
   async function handleIncomeSave(data: Omit<IncomeT, 'id'>, id?: string): Promise<{ error: string | null }> {
@@ -276,6 +301,52 @@ export default function App() {
     const { error } = await deleteIncome(session.userId, id);
     if (!error) setIncomes((prev) => prev.filter((i) => i.id !== id));
     return { error };
+  }
+
+  async function handleSettingsChange(s: AppSettings): Promise<void> {
+    setSettings(s);
+    if (!session?.userId) return;
+    const { settings: saved } = await upsertUserSettings(session.userId, s);
+    if (saved) setSettings(saved);
+  }
+
+  function handleInsightGenerated(insight: AIInsight) {
+    setAIInsight(insight);
+    saveAIInsight(insight);
+  }
+
+  async function handleLoadDemo(): Promise<{ error: string | null }> {
+    if (!session?.userId) return { error: 'Sign in to load demo data.' };
+    const { error } = await loadDemoIntoSupabase(session.userId);
+    if (error) return { error };
+    clearAIInsight();
+    await loadAllUserData(session.userId);
+    setPage('dashboard');
+    return { error: null };
+  }
+
+  async function handleClearAllData(): Promise<{ error: string | null }> {
+    if (!session?.userId) return { error: 'Sign in to clear data.' };
+    const userId = session.userId;
+    // Delete in FK-safe order: transactions before categories.
+    const results = await Promise.all([
+      deleteAllTransactions(userId),
+      deleteAllDebts(userId),
+      deleteUserSettings(userId),
+    ]);
+    const firstErr = results.find((r) => r.error);
+    if (firstErr?.error) return { error: firstErr.error };
+    const catErr = await deleteAllCategories(userId);
+    if (catErr.error) return { error: catErr.error };
+    // Incomes: delete by hand since we don't have a deleteAll helper there.
+    // Re-using the per-row delete is fine for MVP — incomes counts are small.
+    for (const inc of incomes) {
+      await deleteIncome(userId, inc.id);
+    }
+    clearAIInsight();
+    await loadAllUserData(userId);
+    setPage('dashboard');
+    return { error: null };
   }
 
   const monthlyNetIncome = totalMonthlyNet(incomes);
@@ -304,7 +375,8 @@ export default function App() {
           <BudgetCategories
             categories={categories}
             transactions={transactions}
-            onChange={handleCategoriesChange}
+            onSave={handleCategorySave}
+            onDelete={handleCategoryDelete}
           />
         )}
         {page === 'income' && (
@@ -319,11 +391,16 @@ export default function App() {
           <Expenses
             transactions={transactions}
             categories={categories}
-            onChange={handleTransactionsChange}
+            onSave={handleTransactionSave}
+            onDelete={handleTransactionDelete}
           />
         )}
         {page === 'debts' && (
-          <Debts debts={debts} onChange={handleDebtsChange} />
+          <Debts
+            debts={debts}
+            onSave={handleDebtSave}
+            onDelete={handleDebtDelete}
+          />
         )}
         {page === 'planner' && (
           <DebtPayoffPlanner
@@ -349,7 +426,8 @@ export default function App() {
           <Settings
             settings={settings}
             onChange={handleSettingsChange}
-            onDemoLoaded={handleDemoLoaded}
+            onLoadDemo={handleLoadDemo}
+            onClearAll={handleClearAllData}
           />
         )}
       </AppShell>

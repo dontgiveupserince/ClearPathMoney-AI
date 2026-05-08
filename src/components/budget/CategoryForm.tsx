@@ -9,11 +9,13 @@ const PRESET_COLORS = [
 
 interface Props {
   initial?: Category;
-  onSave: (data: Omit<Category, 'id'>) => void;
+  onSave: (data: Omit<Category, 'id'>) => void | Promise<void>;
   onCancel: () => void;
+  saving?: boolean;
+  serverError?: string | null;
 }
 
-export default function CategoryForm({ initial, onSave, onCancel }: Props) {
+export default function CategoryForm({ initial, onSave, onCancel, saving, serverError }: Props) {
   const [name, setName] = useState(initial?.name ?? '');
   const [monthlyLimit, setMonthlyLimit] = useState(initial?.monthlyLimit?.toString() ?? '');
   const [color, setColor] = useState(initial?.color ?? PRESET_COLORS[0]);
@@ -77,12 +79,16 @@ export default function CategoryForm({ initial, onSave, onCancel }: Props) {
           ))}
         </div>
       </div>
+      {serverError && (
+        <p className="text-red-500 text-sm">{serverError}</p>
+      )}
+
       <div className="flex gap-3 pt-2">
-        <button type="button" onClick={onCancel} className="flex-1 px-4 py-2.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-xl hover:bg-gray-50 transition-colors">
+        <button type="button" onClick={onCancel} disabled={saving} className="flex-1 px-4 py-2.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-50">
           Cancel
         </button>
-        <button type="submit" className="flex-1 px-4 py-2.5 bg-teal-600 text-white text-sm font-medium rounded-xl hover:bg-teal-700 transition-colors">
-          {initial ? 'Save Changes' : 'Add Category'}
+        <button type="submit" disabled={saving} className="flex-1 px-4 py-2.5 bg-teal-600 text-white text-sm font-medium rounded-xl hover:bg-teal-700 transition-colors disabled:opacity-50">
+          {saving ? 'Saving…' : initial ? 'Save Changes' : 'Add Category'}
         </button>
       </div>
     </form>

@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Plus, CreditCard as Edit2, Trash2, Tag } from 'lucide-react';
-import { Category } from '../../types/finance';
+import { Category, Transaction } from '../../types/finance';
 import { getCategorySpending, formatCurrency } from '../../lib/calculations';
-import { Transaction } from '../../types/finance';
 import Modal from '../shared/Modal';
 import EmptyState from '../shared/EmptyState';
 import CategoryForm from './CategoryForm';
@@ -10,28 +9,39 @@ import CategoryForm from './CategoryForm';
 interface Props {
   categories: Category[];
   transactions: Transaction[];
-  onChange: (cats: Category[]) => void;
+  onSave: (data: Omit<Category, 'id'>, id?: string) => Promise<{ error: string | null }>;
+  onDelete: (id: string) => Promise<{ error: string | null }>;
 }
 
-export default function BudgetCategories({ categories, transactions, onChange }: Props) {
+export default function BudgetCategories({ categories, transactions, onSave, onDelete }: Props) {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Category | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [serverError, setServerError] = useState<string | null>(null);
   const spending = getCategorySpending(transactions, categories);
 
-  function handleSave(data: Omit<Category, 'id'>) {
-    if (editing) {
-      onChange(categories.map((c) => (c.id === editing.id ? { ...editing, ...data } : c)));
-    } else {
-      onChange([...categories, { ...data, id: `cat_${Date.now()}` }]);
+  async function handleSave(data: Omit<Category, 'id'>) {
+    setSaving(true);
+    setServerError(null);
+    const { error } = await onSave(data, editing?.id);
+    setSaving(false);
+    if (error) {
+      setServerError(error);
+      return;
     }
     setShowForm(false);
     setEditing(null);
   }
 
-  function handleDelete(id: string) {
+  async function handleDelete(id: string) {
     if (!confirm('Delete this category? Expenses linked to it will remain.')) return;
-    onChange(categories.filter((c) => c.id !== id));
+    const { error } = await onDelete(id);
+    if (error) alert(`Could not delete: ${error}`);
   }
+
+  function openAdd() { setEditing(null); setServerError(null); setShowForm(true); }
+  function openEdit(c: Category) { setEditing(c); setServerError(null); setShowForm(true); }
+  function closeForm() { if (saving) return; setShowForm(false); setEditing(null); setServerError(null); }
 
   return (
     <div className="space-y-6">
@@ -41,7 +51,7 @@ export default function BudgetCategories({ categories, transactions, onChange }:
           <p className="text-gray-500 text-sm mt-1">Set monthly spending limits for each area of your life.</p>
         </div>
         <button
-          onClick={() => { setEditing(null); setShowForm(true); }}
+          onClick={openAdd}
           className="flex items-center gap-2 px-4 py-2.5 bg-teal-600 text-white text-sm font-medium rounded-xl hover:bg-teal-700 transition-colors"
         >
           <Plus size={16} />
@@ -54,7 +64,7 @@ export default function BudgetCategories({ categories, transactions, onChange }:
           icon={Tag}
           title="No categories yet"
           description="Create budget categories to organize your spending and set monthly limits."
-          action={{ label: 'Add your first category', onClick: () => setShowForm(true) }}
+          action={{ label: 'Add your first category', onClick: openAdd }}
         />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -76,7 +86,7 @@ export default function BudgetCategories({ categories, transactions, onChange }:
                   </div>
                   <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
-                      onClick={() => { setEditing(cat); setShowForm(true); }}
+                      onClick={() => openEdit(cat)}
                       className="p-1.5 text-gray-400 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
                     >
                       <Edit2 size={14} />
@@ -116,14 +126,13 @@ export default function BudgetCategories({ categories, transactions, onChange }:
       )}
 
       {showForm && (
-        <Modal
-          title={editing ? 'Edit Category' : 'Add Category'}
-          onClose={() => { setShowForm(false); setEditing(null); }}
-        >
+        <Modal title={editing ? 'Edit Category' : 'Add Category'} onClose={closeForm}>
           <CategoryForm
             initial={editing ?? undefined}
             onSave={handleSave}
-            onCancel={() => { setShowForm(false); setEditing(null); }}
+            onCancel={closeForm}
+            saving={saving}
+            serverError={serverError}
           />
         </Modal>
       )}

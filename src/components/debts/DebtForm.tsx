@@ -3,11 +3,13 @@ import { Debt, DEBT_TYPES } from '../../types/finance';
 
 interface Props {
   initial?: Debt;
-  onSave: (data: Omit<Debt, 'id'>) => void;
+  onSave: (data: Omit<Debt, 'id'>) => void | Promise<void>;
   onCancel: () => void;
+  saving?: boolean;
+  serverError?: string | null;
 }
 
-export default function DebtForm({ initial, onSave, onCancel }: Props) {
+export default function DebtForm({ initial, onSave, onCancel, saving, serverError }: Props) {
   const [name, setName] = useState(initial?.name ?? '');
   const [type, setType] = useState<Debt['type']>(initial?.type ?? 'credit_card');
   const [balance, setBalance] = useState(initial?.balance?.toString() ?? '');
@@ -77,12 +79,16 @@ export default function DebtForm({ initial, onSave, onCancel }: Props) {
           <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className={inputCls} />
         </div>
       </div>
+      {serverError && (
+        <p className="text-red-500 text-sm">{serverError}</p>
+      )}
+
       <div className="flex gap-3 pt-2">
-        <button type="button" onClick={onCancel} className="flex-1 px-4 py-2.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-xl hover:bg-gray-50 transition-colors">
+        <button type="button" onClick={onCancel} disabled={saving} className="flex-1 px-4 py-2.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-50">
           Cancel
         </button>
-        <button type="submit" className="flex-1 px-4 py-2.5 bg-teal-600 text-white text-sm font-medium rounded-xl hover:bg-teal-700 transition-colors">
-          {initial ? 'Save Changes' : 'Add Debt'}
+        <button type="submit" disabled={saving} className="flex-1 px-4 py-2.5 bg-teal-600 text-white text-sm font-medium rounded-xl hover:bg-teal-700 transition-colors disabled:opacity-50">
+          {saving ? 'Saving…' : initial ? 'Save Changes' : 'Add Debt'}
         </button>
       </div>
     </form>

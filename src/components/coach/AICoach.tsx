@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Sparkles, Shield, AlertCircle, CheckCircle2, Lightbulb, Send, RefreshCw, TrendingDown } from 'lucide-react';
 import { Category, Transaction, Debt, AppSettings, AIInsight } from '../../types/finance';
 import { getCategorySpending, getTotalExpenses } from '../../lib/calculations';
-import { saveSettings } from '../../lib/storage';
 
 interface Props {
   categories: Category[];
@@ -73,9 +72,7 @@ export default function AICoach({ categories, transactions, debts, settings, ins
   const [error, setError] = useState('');
 
   function acknowledgePrivacy() {
-    const updated = { ...settings, aiPrivacyAcknowledged: true };
-    onSettingsChange(updated);
-    saveSettings(updated);
+    onSettingsChange({ ...settings, aiPrivacyAcknowledged: true });
   }
 
   async function handleGenerate() {

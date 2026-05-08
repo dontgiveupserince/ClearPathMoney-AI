@@ -5,11 +5,13 @@ import { today } from '../../lib/calculations';
 interface Props {
   initial?: Transaction;
   categories: Category[];
-  onSave: (data: Omit<Transaction, 'id'>) => void;
+  onSave: (data: Omit<Transaction, 'id'>) => void | Promise<void>;
   onCancel: () => void;
+  saving?: boolean;
+  serverError?: string | null;
 }
 
-export default function ExpenseForm({ initial, categories, onSave, onCancel }: Props) {
+export default function ExpenseForm({ initial, categories, onSave, onCancel, saving, serverError }: Props) {
   const [amount, setAmount] = useState(initial?.amount?.toString() ?? '');
   const [date, setDate] = useState(initial?.date ?? today());
   const [categoryId, setCategoryId] = useState(initial?.categoryId ?? (categories[0]?.id ?? ''));
@@ -81,12 +83,16 @@ export default function ExpenseForm({ initial, categories, onSave, onCancel }: P
         <label className="block text-sm font-medium text-gray-700 mb-1.5">Note (optional)</label>
         <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Any additional details..." className={inputCls} />
       </div>
+      {serverError && (
+        <p className="text-red-500 text-sm">{serverError}</p>
+      )}
+
       <div className="flex gap-3 pt-2">
-        <button type="button" onClick={onCancel} className="flex-1 px-4 py-2.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-xl hover:bg-gray-50 transition-colors">
+        <button type="button" onClick={onCancel} disabled={saving} className="flex-1 px-4 py-2.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-50">
           Cancel
         </button>
-        <button type="submit" className="flex-1 px-4 py-2.5 bg-teal-600 text-white text-sm font-medium rounded-xl hover:bg-teal-700 transition-colors">
-          {initial ? 'Save Changes' : 'Add Expense'}
+        <button type="submit" disabled={saving} className="flex-1 px-4 py-2.5 bg-teal-600 text-white text-sm font-medium rounded-xl hover:bg-teal-700 transition-colors disabled:opacity-50">
+          {saving ? 'Saving…' : initial ? 'Save Changes' : 'Add Expense'}
         </button>
       </div>
     </form>
