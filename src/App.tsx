@@ -53,7 +53,7 @@ async function upsertProfile(userId: string, firstName: string, lastName: string
 export default function App() {
   const [session, setSession] = useState<AppSession | null | undefined>(undefined);
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(true);
   const [needsProfile, setNeedsProfile] = useState(false);
   const [page, setPage] = useState<Page>('dashboard');
   const [categories, setCategories] = useState<Category[]>([]);
@@ -79,7 +79,15 @@ export default function App() {
 
   // Load profile when session is established
   useEffect(() => {
-    if (!session?.userId) return;
+    if (!session) {
+      setProfileLoading(false);
+      return;
+    }
+    if (!session.userId) {
+      // Local auth — no profile DB, skip
+      setProfileLoading(false);
+      return;
+    }
     setProfileLoading(true);
     fetchProfile(session.userId).then((p) => {
       setProfileLoading(false);
@@ -90,7 +98,7 @@ export default function App() {
         setNeedsProfile(true);
       }
     });
-  }, [session?.userId]);
+  }, [session?.userId, session]);
 
   // Load local data when session is ready
   useEffect(() => {
