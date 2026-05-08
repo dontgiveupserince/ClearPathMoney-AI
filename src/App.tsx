@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from './lib/supabase';
+import { supabase, supabaseConfigured } from './lib/supabase';
+import {
+  getLocalSession, signInLocal, signUpLocal, resetPasswordLocal, clearLocalSession,
+} from './lib/localAuth';
 import AuthPage, { AuthHandlers } from './components/auth/AuthPage';
 import CompleteProfileModal from './components/auth/CompleteProfileModal';
 import AppShell, { Page } from './components/AppShell';
@@ -22,7 +25,7 @@ import { Category, Transaction, Debt, AppSettings, AIInsight } from './types/fin
 
 interface AppSession {
   email?: string;
-  userId: string;
+  userId?: string;
 }
 
 interface UserProfile {
@@ -31,20 +34,28 @@ interface UserProfile {
 }
 
 async function fetchProfile(userId: string): Promise<UserProfile | null> {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('first_name, last_name')
-    .eq('id', userId)
-    .maybeSingle();
-  if (error || !data) return null;
-  return { firstName: data.first_name ?? '', lastName: data.last_name ?? '' };
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('first_name, last_name')
+      .eq('id', userId)
+      .maybeSingle();
+    if (error || !data) return null;
+    return { firstName: data.first_name ?? '', lastName: data.last_name ?? '' };
+  } catch {
+    return null;
+  }
 }
 
 async function upsertProfile(userId: string, firstName: string, lastName: string): Promise<{ error: string | null }> {
-  const { error } = await supabase
-    .from('profiles')
-    .upsert({ id: userId, first_name: firstName, last_name: lastName, updated_at: new Date().toISOString() });
-  return { error: error?.message ?? null };
+  try {
+    const { error } = await supabase
+      .from('profiles')
+      .upsert({ id: userId, first_name: firstName, last_name: lastName, updated_at: new Date().toISOString() });
+    return { error: error?.message ?? null };
+  } catch {
+    return { error: 'Failed to save profile.' };
+  }
 }
 
 export default function App() {
@@ -60,19 +71,24 @@ export default function App() {
   const [aiInsight, setAIInsight] = useState<AIInsight | null>(null);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session: s } }) => {
-      setSession(s ? { email: s.user.email, userId: s.user.id } : null);
-    });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
-      setSession(s ? { email: s.user.email, userId: s.user.id } : null);
-    });
-    return () => subscription.unsubscribe();
+    if (supabaseConfigured) {
+      supabase.auth.getSession().then(({ data: { session: s } }) => {
+        setSession(s ? { email: s.user.email, userId: s.user.id } : null);
+      });
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
+        setSession(s ? { email: s.user.email, userId: s.user.id } : null);
+      });
+      return () => subscription.unsubscribe();
+    } else {
+      const local = getLocalSession();
+      setSession(local ? { email: local.user.email } : null);
+    }
   }, []);
 
-  // Load profile when session is established
+  // Load profile when session changes
   useEffect(() => {
     if (session === undefined) return;
-    if (!session) {
+    if (!session || !session.userId) {
       setProfileLoading(false);
       return;
     }
@@ -110,29 +126,48 @@ export default function App() {
   }
 
   function handleSignOut() {
-    supabase.auth.signOut();
+    if (supabaseConfigured) {
+      supabase.auth.signOut();
+    } else {
+      clearLocalSession();
+      setSession(null);
+    }
   }
 
-  const authHandlers: AuthHandlers = {
-    signIn: async (email, password) => {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      return { error: error?.message ?? null };
-    },
-    signUp: async (email, password, firstName, lastName) => {
-      const { data, error } = await supabase.auth.signUp({ email, password });
-      if (error) return { error: error.message };
-      if (data.user) {
-        await upsertProfile(data.user.id, firstName, lastName);
+  const authHandlers: AuthHandlers = supabaseConfigured
+    ? {
+        signIn: async (email, password) => {
+          const { error } = await supabase.auth.signInWithPassword({ email, password });
+          return { error: error?.message ?? null };
+        },
+        signUp: async (email, password, firstName, lastName) => {
+          const { data, error } = await supabase.auth.signUp({ email, password });
+          if (error) return { error: error.message };
+          if (data.user) {
+            await upsertProfile(data.user.id, firstName, lastName);
+          }
+          return { error: null };
+        },
+        resetPassword: async (email) => {
+          const { error } = await supabase.auth.resetPasswordForEmail(email);
+          return { error: error?.message ?? null };
+        },
       }
-      return { error: null };
-    },
-    resetPassword: async (email) => {
-      const { error } = await supabase.auth.resetPasswordForEmail(email);
-      return { error: error?.message ?? null };
-    },
-  };
+    : {
+        signIn: async (email, password) => {
+          const { session: s, error } = await signInLocal(email, password);
+          if (s) setSession({ email: s.user.email });
+          return { error };
+        },
+        signUp: async (email, password) => {
+          const { session: s, error } = await signUpLocal(email, password);
+          if (s) setSession({ email: s.user.email });
+          return { error };
+        },
+        resetPassword: resetPasswordLocal,
+      };
 
-  if (session === undefined || (session && profileLoading)) {
+  if (session === undefined || (session && session.userId && profileLoading)) {
     return (
       <div className="min-h-screen bg-[#F7F6F2] flex items-center justify-center">
         <div className="w-8 h-8 border-2 border-teal-200 border-t-teal-600 rounded-full animate-spin" />
@@ -180,7 +215,7 @@ export default function App() {
 
   return (
     <>
-      {needsProfile && (
+      {needsProfile && supabaseConfigured && (
         <CompleteProfileModal onComplete={handleCompleteProfile} />
       )}
       <AppShell page={page} onNav={setPage} userEmail={session.email} onSignOut={handleSignOut}>
