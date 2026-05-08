@@ -8,6 +8,7 @@ import CompleteProfileModal from './components/auth/CompleteProfileModal';
 import AppShell, { Page } from './components/AppShell';
 import Dashboard from './components/dashboard/Dashboard';
 import BudgetCategories from './components/budget/BudgetCategories';
+import Income from './components/income/Income';
 import Expenses from './components/expenses/Expenses';
 import Debts from './components/debts/Debts';
 import DebtPayoffPlanner from './components/planner/DebtPayoffPlanner';
@@ -21,7 +22,10 @@ import {
   getAIInsight, saveAIInsight,
   initializeDefaults,
 } from './lib/storage';
-import { Category, Transaction, Debt, AppSettings, AIInsight } from './types/finance';
+import {
+  fetchIncomes, createIncome, updateIncome, deleteIncome, totalMonthlyNet, totalMonthlyGross,
+} from './lib/incomes';
+import { Category, Transaction, Debt, AppSettings, AIInsight, Income as IncomeT } from './types/finance';
 
 interface AppSession {
   email?: string;
@@ -69,6 +73,7 @@ export default function App() {
   const [debts, setDebts] = useState<Debt[]>([]);
   const [settings, setSettings] = useState<AppSettings>(getSettings());
   const [aiInsight, setAIInsight] = useState<AIInsight | null>(null);
+  const [incomes, setIncomes] = useState<IncomeT[]>([]);
 
   useEffect(() => {
     if (supabaseConfigured) {
@@ -113,6 +118,36 @@ export default function App() {
     setDebts(getDebts());
     setSettings(getSettings());
     setAIInsight(getAIInsight());
+  }, [session?.userId]);
+
+  // Load incomes from Supabase + one-time migration of legacy settings.monthlyIncome
+  async function loadIncomesFor(userId: string) {
+    const fetched = await fetchIncomes(userId);
+    const current = getSettings();
+    if (fetched.length === 0 && current.monthlyIncome > 0) {
+      const { income: seeded } = await createIncome(userId, {
+        sourceName: 'Salary',
+        type: 'salary',
+        grossAmount: current.monthlyIncome,
+        netAmount: current.monthlyIncome,
+        frequency: 'monthly',
+        notes: 'Imported from your previous Settings monthly income.',
+      });
+      const cleared: AppSettings = { ...current, monthlyIncome: 0 };
+      saveSettings(cleared);
+      setSettings(cleared);
+      setIncomes(seeded ? [seeded] : []);
+      return;
+    }
+    setIncomes(fetched);
+  }
+
+  useEffect(() => {
+    if (!session?.userId) {
+      setIncomes([]);
+      return;
+    }
+    loadIncomesFor(session.userId);
   }, [session?.userId]);
 
   async function handleCompleteProfile(firstName: string, lastName: string): Promise<{ error: string | null }> {
@@ -214,14 +249,37 @@ export default function App() {
     saveAIInsight(insight);
   }
 
-  function handleDemoLoaded() {
+  async function handleDemoLoaded() {
     setCategories(getCategories());
     setTransactions(getTransactions());
     setDebts(getDebts());
     setSettings(getSettings());
     setAIInsight(null);
+    if (session?.userId) await loadIncomesFor(session.userId);
     setPage('dashboard');
   }
+
+  async function handleIncomeSave(data: Omit<IncomeT, 'id'>, id?: string): Promise<{ error: string | null }> {
+    if (!session?.userId) return { error: 'Sign in to save income.' };
+    if (id) {
+      const { income, error } = await updateIncome(session.userId, id, data);
+      if (income) setIncomes((prev) => prev.map((i) => (i.id === id ? income : i)));
+      return { error };
+    }
+    const { income, error } = await createIncome(session.userId, data);
+    if (income) setIncomes((prev) => [...prev, income]);
+    return { error };
+  }
+
+  async function handleIncomeDelete(id: string): Promise<{ error: string | null }> {
+    if (!session?.userId) return { error: 'Sign in to delete income.' };
+    const { error } = await deleteIncome(session.userId, id);
+    if (!error) setIncomes((prev) => prev.filter((i) => i.id !== id));
+    return { error };
+  }
+
+  const monthlyNetIncome = totalMonthlyNet(incomes);
+  const monthlyGrossIncome = totalMonthlyGross(incomes);
 
   return (
     <>
@@ -238,6 +296,8 @@ export default function App() {
             aiInsight={aiInsight}
             onGoToCoach={() => setPage('coach')}
             firstName={profile?.firstName}
+            monthlyNetIncome={monthlyNetIncome}
+            monthlyGrossIncome={monthlyGrossIncome}
           />
         )}
         {page === 'budget' && (
@@ -245,6 +305,14 @@ export default function App() {
             categories={categories}
             transactions={transactions}
             onChange={handleCategoriesChange}
+          />
+        )}
+        {page === 'income' && (
+          <Income
+            incomes={incomes}
+            configured={Boolean(session?.userId)}
+            onSave={handleIncomeSave}
+            onDelete={handleIncomeDelete}
           />
         )}
         {page === 'expenses' && (
@@ -273,6 +341,8 @@ export default function App() {
             insight={aiInsight}
             onInsightGenerated={handleInsightGenerated}
             onSettingsChange={handleSettingsChange}
+            monthlyNetIncome={monthlyNetIncome}
+            monthlyGrossIncome={monthlyGrossIncome}
           />
         )}
         {page === 'settings' && (

@@ -27,6 +27,7 @@ export interface Debt {
 }
 
 export interface AppSettings {
+  /** @deprecated Replaced by per-user `incomes` table. Kept for one-time migration of pre-existing local data. */
   monthlyIncome: number;
   currency: string;
   payoffMethod: 'snowball' | 'avalanche';
@@ -34,6 +35,44 @@ export interface AppSettings {
   aiPrivacyAcknowledged: boolean;
   openAiApiKey?: string;
 }
+
+export type IncomeType =
+  | 'salary'
+  | 'business'
+  | 'investment'
+  | 'rental'
+  | 'pension'
+  | 'government'
+  | 'other';
+
+export type IncomeFrequency = 'weekly' | 'biweekly' | 'monthly' | 'yearly';
+
+export interface Income {
+  id: string;
+  sourceName: string;
+  type: IncomeType;
+  grossAmount: number;
+  netAmount: number;
+  frequency: IncomeFrequency;
+  notes?: string;
+}
+
+export const INCOME_TYPES: Record<IncomeType, string> = {
+  salary: 'Salary / Employment',
+  business: 'Business / Self-Employment',
+  investment: 'Investment Income',
+  rental: 'Rental Income',
+  pension: 'Pension / Retirement',
+  government: 'Government Benefits',
+  other: 'Other',
+};
+
+export const INCOME_FREQUENCIES: Record<IncomeFrequency, string> = {
+  weekly: 'Weekly',
+  biweekly: 'Bi-weekly',
+  monthly: 'Monthly',
+  yearly: 'Yearly',
+};
 
 export interface PayoffMonth {
   month: number;

@@ -12,17 +12,27 @@ interface Props {
   insight: AIInsight | null;
   onInsightGenerated: (insight: AIInsight) => void;
   onSettingsChange: (s: AppSettings) => void;
+  monthlyNetIncome: number;
+  monthlyGrossIncome: number;
 }
 
 const EDGE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-coach`;
 const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-function buildContext(categories: Category[], transactions: Transaction[], debts: Debt[], settings: AppSettings) {
+function buildContext(
+  categories: Category[],
+  transactions: Transaction[],
+  debts: Debt[],
+  settings: AppSettings,
+  monthlyNetIncome: number,
+  monthlyGrossIncome: number,
+) {
   const categorySpending = getCategorySpending(transactions, categories);
   const totalExpenses = getTotalExpenses(transactions);
   const totalDebt = debts.reduce((s, d) => s + d.balance, 0);
   return {
-    monthlyIncome: settings.monthlyIncome,
+    monthlyIncome: monthlyNetIncome,
+    monthlyGrossIncome,
     totalExpenses,
     totalDebt,
     categories: categorySpending.map((c) => ({
@@ -55,7 +65,7 @@ async function callEdge(body: object): Promise<{ data?: unknown; error?: string 
   }
 }
 
-export default function AICoach({ categories, transactions, debts, settings, insight, onInsightGenerated, onSettingsChange }: Props) {
+export default function AICoach({ categories, transactions, debts, settings, insight, onInsightGenerated, onSettingsChange, monthlyNetIncome, monthlyGrossIncome }: Props) {
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState('');
   const [generating, setGenerating] = useState(false);
@@ -74,7 +84,7 @@ export default function AICoach({ categories, transactions, debts, settings, ins
     if (!hasKey) return;
     setGenerating(true);
     setError('');
-    const context = buildContext(categories, transactions, debts, settings);
+    const context = buildContext(categories, transactions, debts, settings, monthlyNetIncome, monthlyGrossIncome);
     const { data, error: err } = await callEdge({ action: 'generate_plan', context });
     setGenerating(false);
     if (err) { setError(err); return; }
@@ -94,7 +104,7 @@ export default function AICoach({ categories, transactions, debts, settings, ins
     if (!question.trim() || !hasKey) return;
     setAnswering(true);
     setError('');
-    const context = buildContext(categories, transactions, debts, settings);
+    const context = buildContext(categories, transactions, debts, settings, monthlyNetIncome, monthlyGrossIncome);
     const { data, error: err } = await callEdge({ action: 'ask_question', context, question });
     setAnswering(false);
     if (err) { setError(err); return; }
