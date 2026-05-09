@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
-import { Sparkles, Shield, AlertCircle, CheckCircle2, Lightbulb, Send, RefreshCw, TrendingDown } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Sparkles, Shield, AlertCircle, CheckCircle2, Lightbulb, Send, RefreshCw, TrendingDown, Info } from 'lucide-react';
 import { Category, Transaction, Debt, AppSettings, AIInsight } from '../../types/finance';
-import { getCategorySpending, getTotalExpenses } from '../../lib/calculations';
+import { getCategorySpending, getTotalExpenses, getCurrentMonthExpenses } from '../../lib/calculations';
 
 interface Props {
   categories: Category[];
@@ -12,6 +12,8 @@ interface Props {
   onInsightGenerated: (insight: AIInsight) => void;
   onSettingsChange: (s: AppSettings) => void;
   monthlyNetIncome: number;
+  autoGenerate?: boolean;
+  onAutoGenerateHandled?: () => void;
 }
 
 const EDGE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-coach`;
@@ -27,17 +29,34 @@ function buildContext(
   const categorySpending = getCategorySpending(transactions, categories);
   const totalExpenses = getTotalExpenses(transactions);
   const totalDebt = debts.reduce((s, d) => s + d.balance, 0);
+  // Pass current-month transactions so AI sees individual spending details
+  const currentMonthTxns = getCurrentMonthExpenses(transactions);
+  const recentTransactions = transactions
+    .slice(0, 30)
+    .map((t) => {
+      const cat = categories.find((c) => c.id === t.categoryId);
+      return { date: t.date, merchant: t.merchant, amount: t.amount, type: t.type, category: cat?.name ?? 'Uncategorized' };
+    });
   return {
     monthlyIncome: monthlyNetIncome,
     totalExpenses,
     totalDebt,
+    currentMonthTransactionCount: currentMonthTxns.length,
     categories: categorySpending.map((c) => ({
       name: c.category.name,
       spent: c.spent,
       limit: c.category.monthlyLimit,
       percentage: c.percentage,
     })),
-    debts: debts.map((d) => ({ name: d.name, balance: d.balance, apr: d.apr, type: d.type })),
+    debts: debts.map((d) => ({
+      name: d.name,
+      balance: d.balance,
+      apr: d.apr,
+      type: d.type,
+      minimumPayment: d.minimumPayment,
+      dueDate: d.dueDate,
+    })),
+    recentTransactions,
     payoffMethod: settings.payoffMethod,
     extraDebtPayment: settings.extraDebtPayment,
   };
@@ -61,12 +80,21 @@ async function callEdge(body: object): Promise<{ data?: unknown; error?: string 
   }
 }
 
-export default function AICoach({ categories, transactions, debts, settings, insight, onInsightGenerated, onSettingsChange, monthlyNetIncome }: Props) {
+export default function AICoach({ categories, transactions, debts, settings, insight, onInsightGenerated, onSettingsChange, monthlyNetIncome, autoGenerate, onAutoGenerateHandled }: Props) {
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState('');
   const [generating, setGenerating] = useState(false);
   const [answering, setAnswering] = useState(false);
   const [error, setError] = useState('');
+
+  // Auto-generate plan when triggered (e.g. after demo data pre-load).
+  useEffect(() => {
+    if (autoGenerate && settings.aiPrivacyAcknowledged && !generating) {
+      onAutoGenerateHandled?.();
+      handleGenerate();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoGenerate, settings.aiPrivacyAcknowledged]);
 
   function acknowledgePrivacy() {
     onSettingsChange({ ...settings, aiPrivacyAcknowledged: true });
@@ -148,6 +176,14 @@ export default function AICoach({ categories, transactions, debts, settings, ins
           {generating ? <RefreshCw size={16} className="animate-spin" /> : <Sparkles size={16} />}
           {generating ? 'Analyzing...' : insight ? 'Regenerate Plan' : 'Generate Weekly Plan'}
         </button>
+      </div>
+
+      {/* Stale data notice */}
+      <div className="flex items-start gap-2.5 px-4 py-3 bg-blue-50 border border-blue-100 rounded-2xl">
+        <Info size={15} className="text-blue-500 shrink-0 mt-0.5" />
+        <p className="text-sm text-blue-700">
+          Click <strong>Regenerate Plan</strong> after adding new income, expenses, or debts to get updated advice based on your latest data.
+        </p>
       </div>
 
       {/* Error */}

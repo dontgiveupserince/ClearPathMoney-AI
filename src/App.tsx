@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase, supabaseConfigured } from './lib/supabase';
 import {
   getLocalSession, signInLocal, signUpLocal, resetPasswordLocal, clearLocalSession,
@@ -83,6 +83,9 @@ export default function App() {
   const [aiInsight, setAIInsight] = useState<AIInsight | null>(null);
   const [incomes, setIncomes] = useState<IncomeT[]>([]);
   const [dataLoading, setDataLoading] = useState(false);
+  // Signals AICoach to auto-generate a plan (used after demo pre-load).
+  const [autoGeneratePlan, setAutoGeneratePlan] = useState(false);
+  const autoGenerateHandled = useRef(false);
 
   useEffect(() => {
     if (supabaseConfigured) {
@@ -121,7 +124,16 @@ export default function App() {
     setDataLoading(true);
     // Run any one-time localStorage → Supabase migration before fetching, so the
     // first fetch already includes migrated rows.
-    await runLegacyLocalStorageMigration(userId, DEFAULT_CATEGORIES);
+    const { isFreshAccount } = await runLegacyLocalStorageMigration(userId, DEFAULT_CATEGORIES);
+
+    // On first launch with no data, seed Sarah's demo and queue AI auto-generation.
+    if (isFreshAccount && !autoGenerateHandled.current) {
+      autoGenerateHandled.current = true;
+      await loadDemoIntoSupabase(userId);
+      await upsertProfile(userId, 'Sarah', 'Demo');
+      setProfile({ firstName: 'Sarah', lastName: 'Demo' });
+      setNeedsProfile(false);
+    }
 
     const [cats, debtRows, txns, settingsRow, incomeRows] = await Promise.all([
       fetchCategories(userId),
@@ -138,6 +150,11 @@ export default function App() {
     setIncomes(incomeRows);
     setAIInsight(getAIInsight());
     setDataLoading(false);
+
+    if (isFreshAccount) {
+      setAutoGeneratePlan(true);
+      setPage('coach');
+    }
   }
 
   useEffect(() => {
@@ -329,8 +346,12 @@ export default function App() {
     const { error } = await loadDemoIntoSupabase(session.userId);
     if (error) return { error };
     clearAIInsight();
+    await upsertProfile(session.userId, 'Sarah', 'Demo');
+    setProfile({ firstName: 'Sarah', lastName: 'Demo' });
+    setNeedsProfile(false);
     await loadAllUserData(session.userId);
-    setPage('dashboard');
+    setAutoGeneratePlan(true);
+    setPage('coach');
     return { error: null };
   }
 
@@ -427,6 +448,8 @@ export default function App() {
             onInsightGenerated={handleInsightGenerated}
             onSettingsChange={handleSettingsChange}
             monthlyNetIncome={monthlyNetIncome}
+            autoGenerate={autoGeneratePlan}
+            onAutoGenerateHandled={() => setAutoGeneratePlan(false)}
           />
         )}
         {page === 'settings' && (

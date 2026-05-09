@@ -65,14 +65,17 @@ export default function Settings({ settings, onChange, onLoadDemo, onClearAll }:
         <h2 className="font-heading font-semibold text-gray-900">Data Management</h2>
         <p className="text-sm text-gray-500">All your financial data is stored in your account on Supabase, scoped to you.</p>
         <div className="flex flex-col gap-3">
-          <button
-            onClick={handleLoadDemo}
-            disabled={demoLoading || clearLoading}
-            className="flex items-center gap-2 px-4 py-2.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-xl hover:bg-gray-50 transition-colors w-fit disabled:opacity-50"
-          >
-            {demoLoading ? <Loader2 size={15} className="animate-spin" /> : <Database size={15} />}
-            {demoLoading ? 'Loading demo…' : 'Load Demo Data'}
-          </button>
+          <div>
+            <button
+              onClick={handleLoadDemo}
+              disabled={demoLoading || clearLoading}
+              className="flex items-center gap-2 px-4 py-2.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-xl hover:bg-gray-50 transition-colors w-fit disabled:opacity-50"
+            >
+              {demoLoading ? <Loader2 size={15} className="animate-spin" /> : <Database size={15} />}
+              {demoLoading ? 'Loading demo…' : 'Reset to Demo Data'}
+            </button>
+            <p className="text-xs text-gray-400 mt-1.5">Replaces all your data with Sarah's sample budget, expenses, and debt.</p>
+          </div>
           <button
             onClick={handleClearAll}
             disabled={demoLoading || clearLoading}

@@ -10,8 +10,10 @@ interface FinancialContext {
   monthlyIncome: number;
   totalExpenses: number;
   totalDebt: number;
+  currentMonthTransactionCount: number;
   categories: { name: string; spent: number; limit: number; percentage: number }[];
-  debts: { name: string; balance: number; apr: number; type: string }[];
+  debts: { name: string; balance: number; apr: number; type: string; minimumPayment: number; dueDate?: string }[];
+  recentTransactions: { date: string; merchant: string; amount: number; type: string; category: string }[];
   payoffMethod: string;
   extraDebtPayment: number;
 }
@@ -40,31 +42,49 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    const remaining = context.monthlyIncome - context.totalExpenses;
+    const savingsRate = context.monthlyIncome > 0 ? ((remaining / context.monthlyIncome) * 100).toFixed(1) : "N/A";
+
     const ctxSummary = `
 Financial Summary:
-- Monthly Income: $${context.monthlyIncome.toFixed(2)}
-- Total Expenses This Month: $${context.totalExpenses.toFixed(2)}
-- Remaining Budget: $${(context.monthlyIncome - context.totalExpenses).toFixed(2)}
+- Monthly Net Income: $${context.monthlyIncome.toFixed(2)}
+- Total Expenses This Month: $${context.totalExpenses.toFixed(2)} (${context.currentMonthTransactionCount} transactions)
+- Remaining Budget: $${remaining.toFixed(2)} (${savingsRate}% savings rate)
 - Total Debt Outstanding: $${context.totalDebt.toFixed(2)}
 - Debt Payoff Method: ${context.payoffMethod}
 - Extra Monthly Debt Payment: $${context.extraDebtPayment.toFixed(2)}
 
-Budget Categories:
-${context.categories.length > 0 ? context.categories.map((c) => `- ${c.name}: spent $${c.spent.toFixed(2)} of $${c.limit.toFixed(2)} limit (${Math.round(c.percentage)}%)`).join("\n") : "No categories tracked."}
+Budget Categories This Month:
+${context.categories.length > 0
+  ? context.categories.map((c) =>
+      `- ${c.name}: spent $${c.spent.toFixed(2)} of $${c.limit.toFixed(2)} budget (${Math.round(c.percentage)}%)`
+    ).join("\n")
+  : "No categories tracked."}
 
 Debts:
-${context.debts.length > 0 ? context.debts.map((d) => `- ${d.name} (${d.type}): $${d.balance.toFixed(2)} balance at ${d.apr}% APR`).join("\n") : "No debts tracked."}
+${context.debts.length > 0
+  ? context.debts.map((d) =>
+      `- ${d.name} (${d.type}): $${d.balance.toFixed(2)} balance at ${d.apr}% APR, min payment $${d.minimumPayment.toFixed(2)}/mo${d.dueDate ? `, due ${d.dueDate}` : ""}`
+    ).join("\n")
+  : "No debts tracked."}
+
+Recent Transactions (up to 30):
+${context.recentTransactions.length > 0
+  ? context.recentTransactions.map((t) =>
+      `- ${t.date} | ${t.merchant} | ${t.category} | $${t.amount.toFixed(2)} (${t.type})`
+    ).join("\n")
+  : "No recent transactions."}
 `.trim();
 
     let systemPrompt: string;
     let userMessage: string;
 
     if (action === "generate_plan") {
-      systemPrompt = `You are a calm, supportive, non-judgmental personal finance coach. Analyze the user's financial data and produce a structured weekly financial plan. Be specific, actionable, and encouraging. Never shame or lecture. Format your response as JSON with exactly these keys: summary (string), alerts (array of strings, may be empty), actions (array of 3-4 strings), debtAdvice (string), savingsOpportunities (array of strings, may be empty). Keep each item concise (1-2 sentences). Return ONLY valid JSON, no markdown fences.`;
-      userMessage = `Analyze my finances and generate a weekly plan:\n\n${ctxSummary}`;
+      systemPrompt = `You are a calm, supportive, non-judgmental personal finance coach. Analyze the user's actual financial data below — including their real income, specific expenses, transaction history, and debt balances — and produce a structured weekly financial plan. Reference specific numbers and merchants from their data. Be specific, actionable, and encouraging. Never shame or lecture. Format your response as JSON with exactly these keys: summary (string), alerts (array of strings, may be empty), actions (array of 3-4 strings), debtAdvice (string), savingsOpportunities (array of strings, may be empty). Keep each item concise (1-2 sentences). Return ONLY valid JSON, no markdown fences.`;
+      userMessage = `Analyze my actual financial data and generate a personalized weekly plan:\n\n${ctxSummary}`;
     } else {
-      systemPrompt = `You are a calm, supportive personal finance coach. You have access to the user's financial data and answer their questions about budget, spending, debts, and savings. Be specific with numbers from their data. Keep answers to 2-4 sentences. Be encouraging and non-judgmental.`;
-      userMessage = `My financial data:\n\n${ctxSummary}\n\nMy question: ${question}`;
+      systemPrompt = `You are a calm, supportive personal finance coach. You have access to the user's real financial data including their income, every expense transaction, category budgets, and debt details. Answer questions using the specific numbers from their data — mention actual merchants, amounts, and categories when relevant. Keep answers to 2-4 sentences. Be encouraging and non-judgmental.`;
+      userMessage = `My actual financial data:\n\n${ctxSummary}\n\nMy question: ${question}`;
     }
 
     const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -80,7 +100,7 @@ ${context.debts.length > 0 ? context.debts.map((d) => `- ${d.name} (${d.type}): 
           { role: "user", content: userMessage },
         ],
         temperature: 0.7,
-        max_tokens: action === "generate_plan" ? 900 : 350,
+        max_tokens: action === "generate_plan" ? 1000 : 400,
       }),
     });
 
@@ -96,8 +116,10 @@ ${context.debts.length > 0 ? context.debts.map((d) => `- ${d.name} (${d.type}): 
     const content = openaiData.choices?.[0]?.message?.content ?? "";
 
     if (action === "generate_plan") {
+      // Strip markdown fences if model wrapped despite instructions
+      const cleaned = content.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
       try {
-        const parsed = JSON.parse(content);
+        const parsed = JSON.parse(cleaned);
         return new Response(JSON.stringify(parsed), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });

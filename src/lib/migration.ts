@@ -40,6 +40,9 @@ interface LegacySettings extends Partial<AppSettings> {
  * Safe to call on every app boot — each table is migrated only when its
  * Supabase counterpart is empty AND localStorage has matching data.
  *
+ * Returns true when the account was completely fresh (no prior data anywhere),
+ * so the caller can auto-seed demo data for new users.
+ *
  * Special cases:
  * - If both categories sources are empty, seeds the 12 default categories.
  * - settings.monthlyIncome (deprecated) is intentionally not migrated;
@@ -48,14 +51,17 @@ interface LegacySettings extends Partial<AppSettings> {
 export async function runLegacyLocalStorageMigration(
   userId: string,
   defaultCategories: typeof DEFAULT_CATEGORIES,
-): Promise<void> {
+): Promise<{ isFreshAccount: boolean }> {
   const localCats = readLegacyJson<Category[]>(LEGACY_KEYS.categories, []);
   const localTxns = readLegacyJson<Transaction[]>(LEGACY_KEYS.transactions, []);
   const localDebts = readLegacyJson<Debt[]>(LEGACY_KEYS.debts, []);
   const localSettings = readLegacyJson<LegacySettings | null>(LEGACY_KEYS.settings, null);
 
+  const hasLocalData = localCats.length > 0 || localTxns.length > 0 || localDebts.length > 0 || localSettings != null;
+
   // Categories: migrate or seed defaults if both sides are empty.
   let supabaseCats = await fetchCategories(userId);
+  const hadSupabaseData = supabaseCats.length > 0;
   const oldToNewCatId: Record<string, string> = {};
 
   if (supabaseCats.length === 0) {
@@ -134,13 +140,16 @@ export async function runLegacyLocalStorageMigration(
   }
 
   // Clean up legacy keys once any migration occurred.
-  const migrated = localCats.length > 0 || localDebts.length > 0 || localTxns.length > 0 || localSettings != null;
-  if (migrated) {
+  if (hasLocalData) {
     localStorage.removeItem(LEGACY_KEYS.categories);
     localStorage.removeItem(LEGACY_KEYS.transactions);
     localStorage.removeItem(LEGACY_KEYS.debts);
     localStorage.removeItem(LEGACY_KEYS.settings);
   }
+
+  // Fresh account = nothing in Supabase before this run AND no legacy local data.
+  const isFreshAccount = !hadSupabaseData && !hasLocalData && supabaseDebts.length === 0 && supabaseTxns.length === 0;
+  return { isFreshAccount };
 }
 
 /**
@@ -174,53 +183,52 @@ export async function loadDemoIntoSupabase(userId: string): Promise<{ error: str
   const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   const day = (n: number) => `${ym}-${String(n).padStart(2, '0')}`;
 
+  // catIds index: 0=Housing, 1=Utilities, 2=Groceries, 3=Transportation, 4=Dining, 5=Subscriptions,
+  //               6=Healthcare, 7=Insurance, 8=Debt Payments, 9=Savings, 10=Personal, 11=Other
   const demoTxns: Omit<Transaction, 'id'>[] = [
-    { amount: 1450, date: day(1),  categoryId: catIds[0], merchant: 'Rent',           note: 'Monthly rent', type: 'expense' },
-    { amount: 95,   date: day(4),  categoryId: catIds[1], merchant: 'Electric Co.',                          type: 'expense' },
-    { amount: 55,   date: day(5),  categoryId: catIds[1], merchant: 'Internet',                              type: 'expense' },
-    { amount: 187,  date: day(2),  categoryId: catIds[2], merchant: 'Whole Foods',                           type: 'expense' },
-    { amount: 143,  date: day(7),  categoryId: catIds[2], merchant: "Trader Joe's",                          type: 'expense' },
-    { amount: 78,   date: day(9),  categoryId: catIds[3], merchant: 'Gas Station',                           type: 'expense' },
-    { amount: 45,   date: day(10), categoryId: catIds[4], merchant: 'Chipotle',                              type: 'expense' },
-    { amount: 82,   date: day(12), categoryId: catIds[4], merchant: 'Restaurant Week',                       type: 'expense' },
-    { amount: 15.99, date: day(14), categoryId: catIds[5], merchant: 'Netflix',                              type: 'expense' },
-    { amount: 9.99,  date: day(14), categoryId: catIds[5], merchant: 'Spotify',                              type: 'expense' },
-    { amount: 14.99, date: day(14), categoryId: catIds[5], merchant: 'Hulu',                                 type: 'expense' },
-    { amount: 250,  date: day(15), categoryId: catIds[8], merchant: 'Visa Payment',                          type: 'expense' },
-    { amount: 150,  date: day(18), categoryId: catIds[9], merchant: 'Savings Transfer',                      type: 'expense' },
+    { amount: 1500, date: day(1),  categoryId: catIds[0], merchant: 'Rent',          note: 'Monthly rent', type: 'expense' },
+    { amount: 150,  date: day(3),  categoryId: catIds[1], merchant: 'Electric Co.',                        type: 'expense' },
+    { amount: 180,  date: day(4),  categoryId: catIds[2], merchant: 'Whole Foods',                         type: 'expense' },
+    { amount: 120,  date: day(6),  categoryId: catIds[2], merchant: "Trader Joe's",                        type: 'expense' },
+    { amount: 100,  date: day(5),  categoryId: catIds[2], merchant: 'Costco',                              type: 'expense' },
+    { amount: 120,  date: day(7),  categoryId: catIds[3], merchant: 'Metro Transit',                       type: 'expense' },
+    { amount: 80,   date: day(8),  categoryId: catIds[3], merchant: 'Gas Station',                         type: 'expense' },
+    { amount: 95,   date: day(9),  categoryId: catIds[4], merchant: 'Chipotle',                            type: 'expense' },
+    { amount: 75,   date: day(11), categoryId: catIds[4], merchant: 'Olive Garden',                        type: 'expense' },
+    { amount: 65,   date: day(13), categoryId: catIds[4], merchant: 'Thai Palace',                         type: 'expense' },
+    { amount: 65,   date: day(14), categoryId: catIds[4], merchant: 'Pizza Night',                         type: 'expense' },
+    { amount: 15,   date: day(14), categoryId: catIds[5], merchant: 'Netflix',                             type: 'expense' },
+    { amount: 150,  date: day(15), categoryId: catIds[8], merchant: 'Credit Card Payment',                 type: 'expense' },
   ];
   for (const t of demoTxns) {
     const { error } = await createTransaction(userId, t);
     if (error) return { error };
   }
 
-  // Debts.
+  // Debts — Sarah's single credit card per the spec.
   const demoDebts: Omit<Debt, 'id'>[] = [
-    { name: 'Chase Visa',   type: 'credit_card',  balance: 4200,  apr: 22.99, minimumPayment: 95 },
-    { name: 'Student Loan', type: 'student_loan', balance: 18500, apr: 5.5,   minimumPayment: 210 },
-    { name: 'Car Loan',     type: 'auto_loan',    balance: 9800,  apr: 7.9,   minimumPayment: 285 },
+    { name: 'Credit Card', type: 'credit_card', balance: 5000, apr: 18, minimumPayment: 150 },
   ];
   for (const d of demoDebts) {
     const { error } = await createDebt(userId, d);
     if (error) return { error };
   }
 
-  // Settings.
+  // Settings — acknowledge AI privacy so the plan auto-generates.
   await upsertUserSettings(userId, {
     monthlyIncome: 0,
     currency: 'USD',
     payoffMethod: 'avalanche',
-    extraDebtPayment: 200,
-    aiPrivacyAcknowledged: false,
+    extraDebtPayment: 0,
+    aiPrivacyAcknowledged: true,
   });
 
-  // Demo income source so the Dashboard isn't blank.
+  // Sarah's income: $5,000/month net.
   await createIncome(userId, {
     sourceName: 'Salary',
     type: 'salary',
-    netAmount: 5200,
+    netAmount: 5000,
     frequency: 'monthly',
-    notes: 'Demo income',
   });
 
   return { error: null };
